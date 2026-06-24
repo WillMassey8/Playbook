@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>Playbook AI</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>playbook</string>
+            </array>
+        </dict>
+    </array>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+        <string>twitter</string>
+        <string>x</string>
+        <string>instagram</string>
+    </array>
+    <key>SUPABASE_URL</key>
+    <string>https://riwjijzjqfdsfocnzria.supabase.co</string>
+    <key>SUPABASE_ANON_KEY</key>
+    <string>sb_publishable_dDyrNmILRObvGMTsDTLb2g_uj94nVXj</string>
+</dict>
+</plist>

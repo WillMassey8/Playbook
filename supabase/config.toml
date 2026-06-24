@@ -1,0 +1,11 @@
+[project]
+id = "riwjijzjqfdsfocnzria"
+
+[api]
+enabled = true
+
+[db]
+major_version = 15
+
+[functions.ingest-shared-url]
+verify_jwt = true
