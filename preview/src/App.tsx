@@ -2908,54 +2908,44 @@ function GlowButton({ label, onPress, accent = false, disabled = false }:
 type OnboardingUserType = "coach" | "fan";
 type OnboardingLevel = "hs" | "college" | "youth" | "pro";
 type OnboardingStaff = "solo" | "staff" | "large";
-type OnboardingReason =
-  | "game_prep" | "playbook_library" | "share" | "learn" | "trends"
-  | "follow_team" | "love_football";
-type OnboardingHabit =
-  | "save_x" | "screenshot" | "group_chat" | "bookmark_forget";
 type OnboardingPain =
   | "save_forget" | "cant_find" | "group_chat_lost" | "scroll_again";
-type OnboardingFrequency = "rare" | "weekly" | "often" | "constant";
-type OnboardingPlan = "free" | "individual" | "team";
+type OnboardingVolume = "light" | "medium" | "heavy" | "constant";
+type OnboardingPlan = "annual" | "monthly" | "team" | "free";
 
 type OnboardingAnswers = {
   userType: OnboardingUserType | null;
   level: OnboardingLevel | null;
   staff: OnboardingStaff | null;
-  reasons: OnboardingReason[];
-  habits: OnboardingHabit[];
   pain: OnboardingPain | null;
-  frequency: OnboardingFrequency | null;
+  volume: OnboardingVolume | null;
   plan: OnboardingPlan;
 };
 
 type OnboardingStepId =
-  | "who" | "level" | "staff" | "why" | "habit" | "familiar"
-  | "frequency" | "paywall";
+  | "who" | "level" | "staff" | "pain" | "volume"
+  | "building" | "preview" | "paywall";
 
-const REASON_LABELS: Record<OnboardingReason, string> = {
-  game_prep: "Game prep & install",
-  playbook_library: "Build my playbook / library",
-  share: "Share with my staff or team",
-  learn: "Learn the game",
-  trends: "Stay on top of trends",
-  follow_team: "Follow my team / favorite coaches",
-  love_football: "Just love great football",
-};
-
-const COACH_REASONS: OnboardingReason[] =
-  ["game_prep", "playbook_library", "share", "learn", "trends"];
-const FAN_REASONS: OnboardingReason[] =
-  ["follow_team", "playbook_library", "share", "learn", "trends", "love_football"];
-
+// Coach: 8 steps. Fan: 6 steps (skip level + staff).
 function onboardingSteps(userType: OnboardingUserType | null): OnboardingStepId[] {
   if (userType === "coach") {
-    return ["who", "level", "staff", "why", "habit", "familiar", "frequency", "paywall"];
+    return ["who", "level", "staff", "pain", "volume", "building", "preview", "paywall"];
   }
   if (userType === "fan") {
-    return ["who", "why", "habit", "familiar", "frequency", "paywall"];
+    return ["who", "pain", "volume", "building", "preview", "paywall"];
   }
   return ["who"];
+}
+
+// Estimate monthly clip volume from their answer (used on personalized preview)
+function estimateMonthlyClips(v: OnboardingVolume | null): number {
+  switch (v) {
+    case "light":    return 8;
+    case "medium":   return 25;
+    case "heavy":    return 60;
+    case "constant": return 120;
+    default:         return 0;
+  }
 }
 
 function OnboardingOption({
@@ -3022,13 +3012,310 @@ function OnboardingStepShell({ title, subtitle, children }: {
   );
 }
 
+// "Building your playbook..." animated loader — Noom-style proof of effort
+function BuildingPlaybookStep({ onDone, userType }:
+  { onDone:()=>void; userType: OnboardingUserType | null }) {
+  const [progress, setProgress] = useState(0);
+  const stages = userType === "fan"
+    ? [
+        "Analyzing your saving habits",
+        "Building your personal playbook",
+        "Connecting X & Instagram sources",
+        "Setting up your library",
+      ]
+    : [
+        "Analyzing your coaching workflow",
+        "Building your team playbook",
+        "Mapping your install needs",
+        "Calibrating clip categories",
+      ];
+  const [stage, setStage] = useState(0);
+
+  useEffect(() => {
+    const totalMs = 2400;
+    const tickMs = 40;
+    const totalTicks = totalMs / tickMs;
+    let t = 0;
+    const interval = setInterval(() => {
+      t += 1;
+      const p = Math.min(t / totalTicks, 1);
+      setProgress(p);
+      const newStage = Math.min(stages.length - 1, Math.floor(p * stages.length));
+      setStage(newStage);
+      if (p >= 1) {
+        clearInterval(interval);
+        setTimeout(onDone, 350);
+      }
+    }, tickMs);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center",
+      justifyContent:"center", textAlign:"center", paddingTop:40, paddingBottom:40 }}>
+      {/* Circular progress */}
+      <div style={{ position:"relative", width:120, height:120, marginBottom:32 }}>
+        <svg width="120" height="120" viewBox="0 0 120 120"
+          style={{ transform:"rotate(-90deg)" }}>
+          <circle cx="60" cy="60" r="52" fill="none"
+            stroke="rgba(167,170,175,0.25)" strokeWidth="4"/>
+          <circle cx="60" cy="60" r="52" fill="none"
+            stroke={STEEP.rust} strokeWidth="4" strokeLinecap="round"
+            strokeDasharray={`${2 * Math.PI * 52}`}
+            strokeDashoffset={`${2 * Math.PI * 52 * (1 - progress)}`}
+            style={{ transition:"stroke-dashoffset .12s linear" }}/>
+        </svg>
+        <div style={{ position:"absolute", inset:0, display:"flex",
+          alignItems:"center", justifyContent:"center",
+          fontFamily: STEEP.serif, fontSize:32, color:STEEP.ink,
+          letterSpacing:"-0.02em", fontVariantNumeric:"tabular-nums" }}>
+          {Math.round(progress * 100)}%
+        </div>
+      </div>
+      <h1 style={{
+        fontFamily: STEEP.serif, fontSize:26, fontWeight:400,
+        color: STEEP.ink, letterSpacing:"-0.03em",
+        lineHeight:1.2, margin:0, marginBottom:14,
+      }}>
+        Building your playbook…
+      </h1>
+      <p style={{ fontSize:14, color:STEEP.graphite, letterSpacing:"-0.009em",
+        lineHeight:1.5, margin:0, transition:"opacity .25s" }}>
+        {stages[stage]}
+      </p>
+    </div>
+  );
+}
+
+// Personalized plan preview based on their answers (Noom-style proof of listening)
+function PlanPreviewStep({ answers }: { answers: OnboardingAnswers }) {
+  const monthly = estimateMonthlyClips(answers.volume);
+  const yearly = monthly * 12;
+  const painLine: Record<OnboardingPain, string> = {
+    save_forget: "You'll come back to every play you save",
+    cant_find: "You'll find any play in under 5 seconds",
+    group_chat_lost: "No more clips dying in the group chat",
+    scroll_again: "Stop scrolling X for that one play",
+  };
+
+  const role = answers.userType === "fan" ? "fan" : "coach";
+  const levelLabel: Record<OnboardingLevel, string> = {
+    hs: "high school", college: "college", youth: "youth", pro: "pro",
+  };
+  const roleLine = answers.userType === "coach" && answers.level
+    ? `${levelLabel[answers.level]} coach`
+    : role;
+
+  return (
+    <OnboardingStepShell
+      title="Your playbook is ready"
+      subtitle="Based on your answers, here's what Playbook will do for you.">
+
+      {/* Hero stat card */}
+      <div style={{
+        background: STEEP.white,
+        border:`1.5px solid ${STEEP.rust}`,
+        borderRadius:20, padding:"22px 22px 18px",
+        position:"relative", overflow:"hidden",
+      }}>
+        <div style={{ position:"absolute", top:-20, right:-20, width:90, height:90,
+          borderRadius:"50%", pointerEvents:"none",
+          background:`radial-gradient(circle, ${STEEP.apricotWash} 0%, transparent 70%)`,
+          opacity:0.9 }} />
+        <div style={{ fontSize:11, color:STEEP.rust, fontWeight:600,
+          letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8,
+          position:"relative" }}>
+          Built for a {roleLine}
+        </div>
+        <div style={{ display:"flex", alignItems:"baseline", gap:8, marginBottom:6 }}>
+          <span style={{ fontFamily:STEEP.serif, fontSize:48, fontWeight:400,
+            color:STEEP.ink, letterSpacing:"-0.03em", lineHeight:1 }}>
+            {yearly.toLocaleString()}
+          </span>
+          <span style={{ fontSize:14, color:STEEP.graphite, fontWeight:500,
+            letterSpacing:"-0.009em" }}>
+            plays / year
+          </span>
+        </div>
+        <div style={{ fontSize:13, color:STEEP.graphite, lineHeight:1.5 }}>
+          ≈ {monthly} per month, all organized and searchable in seconds
+        </div>
+      </div>
+
+      {/* Outcome lines */}
+      <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:6 }}>
+        {answers.pain && (
+          <PreviewLine text={painLine[answers.pain]} />
+        )}
+        <PreviewLine text="Save from X & Instagram with one tap" />
+        <PreviewLine text={
+          answers.userType === "coach" && (answers.staff === "staff" || answers.staff === "large")
+            ? "Share your playbook with your entire staff"
+            : "Build categories around how you actually think"
+        } />
+      </div>
+    </OnboardingStepShell>
+  );
+}
+
+function PreviewLine({ text }: { text:string }) {
+  return (
+    <div style={{ display:"flex", alignItems:"flex-start", gap:12,
+      padding:"12px 4px" }}>
+      <div style={{ width:22, height:22, borderRadius:"50%",
+        background:STEEP.apricotWash, flexShrink:0, marginTop:1,
+        display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <svg width="11" height="9" viewBox="0 0 11 9" fill="none">
+          <path d="M1 4.5l3 3 6-6.5" stroke={STEEP.rust} strokeWidth="1.8"
+            strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </div>
+      <span style={{ fontSize:14.5, color:STEEP.ink, lineHeight:1.45,
+        letterSpacing:"-0.009em", flex:1 }}>{text}</span>
+    </div>
+  );
+}
+
+// ─── PAYWALL CARD ────────────────────────────────────────────────────────────
+function PaywallPlanCard({
+  selected, onClick, name, price, sublabel, badge, badgeColor, badgeBg, savings,
+}: {
+  selected:boolean; onClick:()=>void; name:string; price:string;
+  sublabel:string; badge?:string; badgeColor?:string; badgeBg?:string;
+  savings?:string;
+}) {
+  return (
+    <button type="button" onClick={onClick}
+      style={{
+        textAlign:"left", cursor:"pointer", width:"100%",
+        background: selected ? STEEP.apricotWash : STEEP.white,
+        border:`1.5px solid ${selected ? STEEP.rust : "rgba(167,170,175,0.35)"}`,
+        borderRadius:20, padding:"16px 18px", position:"relative",
+        transition:"border-color .15s, background .15s",
+      }}>
+      {badge && (
+        <div style={{ position:"absolute", top:-10, left:16,
+          background: badgeBg || STEEP.ink,
+          color: badgeColor || "#fff",
+          fontSize:10, fontWeight:600,
+          letterSpacing:"0.04em", textTransform:"uppercase",
+          padding:"4px 10px", borderRadius:999 }}>
+          {badge}
+        </div>
+      )}
+      <div style={{ display:"flex", justifyContent:"space-between",
+        alignItems:"baseline", marginBottom:6 }}>
+        <span style={{ fontSize:17, fontWeight:500, color:STEEP.ink,
+          letterSpacing:"-0.01em" }}>{name}</span>
+        <span style={{ fontSize:15, color:STEEP.ink, fontWeight:500 }}>{price}</span>
+      </div>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", gap:8 }}>
+        <span style={{ fontSize:13, color:STEEP.graphite, lineHeight:1.45, flex:1 }}>
+          {sublabel}
+        </span>
+        {savings && (
+          <span style={{ fontSize:11, color:STEEP.rust, fontWeight:600,
+            letterSpacing:"0.02em", whiteSpace:"nowrap" }}>
+            {savings}
+          </span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+// ─── REVERSE TRIAL SHEET ─────────────────────────────────────────────────────
+// Triggered when user tries to exit paywall — offers 14-day trial as a save
+function ReverseTrialSheet({ onAccept, onDecline }:
+  { onAccept:()=>void; onDecline:()=>void }) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), 10);
+    return () => clearTimeout(t);
+  }, []);
+
+  function close(action:()=>void) {
+    setVisible(false);
+    setTimeout(action, 280);
+  }
+
+  return (
+    <div
+      onClick={() => close(onDecline)}
+      style={{
+        position:"absolute", inset:0, zIndex:60,
+        background:`rgba(0,0,0,${visible ? 0.55 : 0})`,
+        transition:"background .3s ease",
+        display:"flex", flexDirection:"column", justifyContent:"flex-end",
+      }}>
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: STEEP.white,
+          borderRadius:"24px 24px 0 0",
+          padding:"0 24px 40px",
+          transform:`translateY(${visible ? 0 : 100}%)`,
+          transition:"transform .32s cubic-bezier(0.32,0.72,0,1)",
+          boxShadow:"0 -4px 40px rgba(0,0,0,0.18)",
+          position:"relative", overflow:"hidden",
+        }}>
+        <div style={{ position:"absolute", top:-40, right:-30, width:160, height:160,
+          borderRadius:"50%", pointerEvents:"none",
+          background:`radial-gradient(circle, ${STEEP.apricotWash} 0%, transparent 70%)`,
+          opacity:0.8 }} />
+
+        {/* Drag handle */}
+        <div style={{ display:"flex", justifyContent:"center", padding:"10px 0 18px" }}>
+          <div style={{ width:36, height:4, borderRadius:99, background:STEEP.dove }} />
+        </div>
+
+        <div style={{ position:"relative" }}>
+          <div style={{ fontSize:11, color:STEEP.rust, fontWeight:600,
+            letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>
+            One-time offer
+          </div>
+          <h2 style={{ fontFamily:STEEP.serif, fontSize:28, fontWeight:400,
+            color:STEEP.ink, letterSpacing:"-0.03em", lineHeight:1.2,
+            margin:0, marginBottom:12 }}>
+            Try Playbook Pro free for 14 days
+          </h2>
+          <p style={{ fontSize:15, color:STEEP.graphite, letterSpacing:"-0.009em",
+            lineHeight:1.55, margin:0, marginBottom:24 }}>
+            No credit card. No commitment. See if it's worth it before you decide.
+          </p>
+
+          <div style={{ display:"flex", flexDirection:"column", gap:10,
+            marginBottom:24 }}>
+            <PreviewLine text="Unlimited clips for 14 days" />
+            <PreviewLine text="Full access to every Pro feature" />
+            <PreviewLine text="No card required to start" />
+          </div>
+
+          <GlowButton label="Start 14-day free trial" onPress={() => close(onAccept)} />
+
+          <button type="button"
+            onClick={() => close(onDecline)}
+            style={{ width:"100%", background:"none", border:"none",
+              padding:"16px 0 0", cursor:"pointer",
+              fontSize:14, color:STEEP.graphite, letterSpacing:"-0.009em",
+              fontFamily:STEEP.sans }}>
+            Continue with free (10 clips)
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()=>void }) {
   const [stepIdx, setStepIdx] = useState(0);
   const [answers, setAnswers] = useState<OnboardingAnswers>({
     userType: null, level: null, staff: null,
-    reasons: [], habits: [], pain: null, frequency: null,
-    plan: "free",
+    pain: null, volume: null,
+    plan: "annual", // Annual default — research-backed for 2026
   });
+  const [showReverseTrial, setShowReverseTrial] = useState(false);
 
   const steps = onboardingSteps(answers.userType);
   const step = steps[stepIdx] ?? "who";
@@ -3038,12 +3325,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
   function goNext() {
     if (step === "paywall") { onComplete(); return; }
     if (stepIdx < steps.length - 1) {
-      const nextIdx = stepIdx + 1;
-      const nextStep = steps[nextIdx];
-      if (nextStep === "paywall") {
-        setAnswers(a => ({ ...a, plan: "free" }));
-      }
-      setStepIdx(nextIdx);
+      setStepIdx(stepIdx + 1);
     }
   }
 
@@ -3052,47 +3334,45 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
     else setStepIdx(i => i - 1);
   }
 
-  function toggleReason(id: OnboardingReason) {
-    setAnswers(a => {
-      const has = a.reasons.includes(id);
-      if (has) return { ...a, reasons: a.reasons.filter(r => r !== id) };
-      if (a.reasons.length >= 2) return a;
-      return { ...a, reasons: [...a.reasons, id] };
-    });
-  }
-
-  function toggleHabit(id: OnboardingHabit) {
-    setAnswers(a => {
-      const has = a.habits.includes(id);
-      return has
-        ? { ...a, habits: a.habits.filter(h => h !== id) }
-        : { ...a, habits: [...a.habits, id] };
-    });
+  // Building step auto-advances when its progress completes
+  function buildingDone() {
+    if (step === "building") goNext();
   }
 
   const canContinue = (() => {
     switch (step) {
-      case "who": return answers.userType !== null;
-      case "level": return answers.level !== null;
-      case "staff": return answers.staff !== null;
-      case "why": return answers.reasons.length > 0;
-      case "habit": return answers.habits.length > 0;
-      case "familiar": return answers.pain !== null;
-      case "frequency": return answers.frequency !== null;
-      case "paywall": return true;
+      case "who":      return answers.userType !== null;
+      case "level":    return answers.level !== null;
+      case "staff":    return answers.staff !== null;
+      case "pain":     return answers.pain !== null;
+      case "volume":   return answers.volume !== null;
+      case "building": return false; // auto-advances
+      case "preview":  return true;
+      case "paywall":  return true;
       default: return false;
     }
   })();
 
-  const continueLabel =
-    step === "paywall"
-      ? answers.plan === "free" ? "Continue for free"
-        : answers.plan === "team" ? "Start team trial"
-        : "Start free trial"
-      : "Continue";
+  const continueLabel = (() => {
+    if (step === "preview") return "See your plan";
+    if (step === "paywall") {
+      if (answers.plan === "free") return "Continue for free";
+      if (answers.plan === "team") return "Start 14-day free trial";
+      return "Start 14-day free trial";
+    }
+    return "Continue";
+  })();
 
-  const reasonOptions = answers.userType === "fan" ? FAN_REASONS : COACH_REASONS;
   const showTeamPlan = answers.userType === "coach";
+  const recommendTeam = answers.staff === "staff" || answers.staff === "large";
+
+  // Total steps shown to user = real steps - 1 (building screen hidden from count)
+  const displaySteps = steps.filter(s => s !== "building");
+  const displayIdx = Math.min(displaySteps.length - 1,
+    steps.slice(0, stepIdx + 1).filter(s => s !== "building").length - 1);
+
+  // On building step, hide the top progress bar
+  const hideTopBar = step === "building";
 
   return (
     <div style={{
@@ -3105,55 +3385,61 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
         opacity:0.7 }} />
 
       {/* Top bar */}
-      <div style={{ flexShrink:0, padding:"12px 20px 0",
-        display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-        <button type="button" onClick={goBack} aria-label="Back"
-          style={{ background:"none", border:"none", cursor:"pointer",
-            width:44, height:44, display:"flex", alignItems:"center",
-            justifyContent:"flex-start", padding:0, color:STEEP.graphite }}>
-          <svg width="6" height="10" viewBox="0 0 6 10" fill="none">
-            <path d="M5 1L1 5l4 4" stroke="currentColor" strokeWidth="1.5"
-              strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-        <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-          {steps.map((s, i) => (
-            <div key={s + i} style={{
-              width: i === stepIdx ? 20 : 6, height:6, borderRadius:99,
-              background: i <= stepIdx ? STEEP.rust : STEEP.fog,
-              transition:"width .2s ease, background .2s ease",
-            }} />
-          ))}
+      {!hideTopBar && (
+        <div style={{ flexShrink:0, padding:"12px 20px 0",
+          display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <button type="button" onClick={goBack} aria-label="Back"
+            style={{ background:"none", border:"none", cursor:"pointer",
+              width:44, height:44, display:"flex", alignItems:"center",
+              justifyContent:"flex-start", padding:0, color:STEEP.graphite }}>
+            <svg width="6" height="10" viewBox="0 0 6 10" fill="none">
+              <path d="M5 1L1 5l4 4" stroke="currentColor" strokeWidth="1.5"
+                strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+            {displaySteps.map((s, i) => (
+              <div key={s + i} style={{
+                width: i === displayIdx ? 20 : 6, height:6, borderRadius:99,
+                background: i <= displayIdx ? STEEP.rust : STEEP.fog,
+                transition:"width .2s ease, background .2s ease",
+              }} />
+            ))}
+          </div>
+          <div style={{ width:44, textAlign:"right", fontSize:12,
+            color:STEEP.graphite, fontVariantNumeric:"tabular-nums",
+            letterSpacing:"-0.01em" }}>
+            {displayIdx + 1}/{displaySteps.length}
+          </div>
         </div>
-        <div style={{ width:44, textAlign:"right", fontSize:12,
-          color:STEEP.graphite, fontVariantNumeric:"tabular-nums",
-          letterSpacing:"-0.01em" }}>
-          {stepIdx + 1}/{totalSteps}
-        </div>
-      </div>
+      )}
 
       {/* Content */}
       <div style={{ flex:1, overflowY:"auto",
-        padding:`24px ${OB_PAD}px 32px` }}
+        padding: hideTopBar
+          ? `0 ${OB_PAD}px 32px`
+          : `24px ${OB_PAD}px 32px` }}
         className="hide-scrollbar">
 
         {step === "who" && (
           <OnboardingStepShell
-            title="Who are you?"
-            subtitle="We'll tailor Playbook to how you watch and save football.">
-            <OnboardingOption label="Coach" selected={answers.userType === "coach"}
+            title="Stop losing the plays you save"
+            subtitle="Tell us how you watch football and we'll build your playbook in 60 seconds.">
+            <OnboardingOption label="I'm a coach" selected={answers.userType === "coach"}
               onClick={() => setAnswers(a => ({ ...a, userType:"coach" }))} />
-            <OnboardingOption label="Fan" selected={answers.userType === "fan"}
+            <OnboardingOption label="I'm a fan" selected={answers.userType === "fan"}
               onClick={() => setAnswers(a => ({ ...a, userType:"fan", level:null, staff:null }))} />
           </OnboardingStepShell>
         )}
 
         {step === "level" && (
-          <OnboardingStepShell title="What level do you coach?">
+          <OnboardingStepShell
+            title="What level do you coach?"
+            subtitle="We'll tune categories and examples to your level.">
             {([
               ["hs", "High school"],
               ["college", "College"],
-              ["youth", "Youth / other"],
+              ["youth", "Youth"],
               ["pro", "Pro"],
             ] as const).map(([id, label]) => (
               <OnboardingOption key={id} label={label}
@@ -3179,43 +3465,10 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
           </OnboardingStepShell>
         )}
 
-        {step === "why" && (
-          <OnboardingStepShell title="Why do you save plays?" subtitle="Pick up to 2.">
-            {reasonOptions.map(id => (
-              <OnboardingOption key={id}
-                label={id === "share" && answers.userType === "fan"
-                  ? "Share with friends in the group chat"
-                  : id === "share"
-                    ? "Share with my staff / team"
-                    : REASON_LABELS[id]}
-                multi
-                selected={answers.reasons.includes(id)}
-                onClick={() => toggleReason(id)} />
-            ))}
-          </OnboardingStepShell>
-        )}
-
-        {step === "habit" && (
+        {step === "pain" && (
           <OnboardingStepShell
-            title="What do you do with a play you love?"
-            subtitle="Select all that apply.">
-            <OnboardingOption label="Save it on X / Instagram" multi
-              selected={answers.habits.includes("save_x")}
-              onClick={() => toggleHabit("save_x")} />
-            <OnboardingOption label="Screenshot or screen record" multi
-              selected={answers.habits.includes("screenshot")}
-              onClick={() => toggleHabit("screenshot")} />
-            <OnboardingOption label="Send it to the group chat" multi
-              selected={answers.habits.includes("group_chat")}
-              onClick={() => toggleHabit("group_chat")} />
-            <OnboardingOption label="Bookmark it and forget" multi
-              selected={answers.habits.includes("bookmark_forget")}
-              onClick={() => toggleHabit("bookmark_forget")} />
-          </OnboardingStepShell>
-        )}
-
-        {step === "familiar" && (
-          <OnboardingStepShell title="Which one sounds like you?">
+            title="Which one sounds like you?"
+            subtitle="Pick the closest fit.">
             {([
               ["save_forget", "I save and send plays all the time but never come back to them"],
               ["cant_find", "I know I saved it somewhere but can't find it"],
@@ -3229,124 +3482,166 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
           </OnboardingStepShell>
         )}
 
-        {step === "frequency" && (
+        {step === "volume" && (
           <OnboardingStepShell
-            title="How often do you save or send plays?"
+            title="How many plays do you save in a week?"
             subtitle="Saving and sending — not just bookmarking.">
             {([
-              ["rare", "Rarely — a few a month"],
-              ["weekly", "Weekly — a handful"],
-              ["often", "Often — always saving or dropping clips in the chat"],
-              ["constant", "Constantly — it's how I watch football"],
+              ["light", "A few — under 5"],
+              ["medium", "A handful — 5 to 15"],
+              ["heavy", "A lot — 15 to 30"],
+              ["constant", "Constantly — 30+"],
             ] as const).map(([id, label]) => (
               <OnboardingOption key={id} label={label}
-                selected={answers.frequency === id}
-                onClick={() => setAnswers(a => ({ ...a, frequency:id }))} />
+                selected={answers.volume === id}
+                onClick={() => setAnswers(a => ({ ...a, volume:id }))} />
             ))}
           </OnboardingStepShell>
+        )}
+
+        {step === "building" && (
+          <BuildingPlaybookStep userType={answers.userType} onDone={buildingDone} />
+        )}
+
+        {step === "preview" && (
+          <PlanPreviewStep answers={answers} />
         )}
 
         {step === "paywall" && (
           <OnboardingStepShell
             title={answers.userType === "fan"
-              ? "Stop losing the plays you save and share"
-              : "Stop losing the plays you save and send"}
-            subtitle="Every clip in one playbook — find it in seconds, not in a dead group chat.">
-            <div style={{ display:"flex", flexDirection:"column", gap:12, marginTop:4, paddingTop:10 }}>
-              {/* Free */}
-              <button type="button"
-                onClick={() => setAnswers(a => ({ ...a, plan:"free" }))}
-                style={{
-                  textAlign:"left", cursor:"pointer",
-                  background: answers.plan === "free" ? STEEP.apricotWash : STEEP.white,
-                  border:`1.5px solid ${answers.plan === "free" ? STEEP.rust : "rgba(167,170,175,0.35)"}`,
-                  borderRadius:20, padding:"16px 18px",
-                  position:"relative",
-                }}>
-                <div style={{ position:"absolute", top:-10, left:16,
-                  background:STEEP.ink, color:"#fff", fontSize:10, fontWeight:600,
-                  letterSpacing:"0.04em", textTransform:"uppercase",
-                  padding:"4px 10px", borderRadius:999 }}>
-                  Free to start
-                </div>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline",
-                  marginBottom:6 }}>
-                  <span style={{ fontSize:17, fontWeight:500, color:STEEP.ink,
-                    letterSpacing:"-0.01em" }}>Free</span>
-                  <span style={{ fontSize:15, color:STEEP.graphite, fontWeight:500 }}>$0</span>
-                </div>
-                <div style={{ fontSize:13, color:STEEP.graphite, lineHeight:1.45 }}>
-                  Save up to 10 clips · save from X & Instagram · personal playbook
-                </div>
-              </button>
+              ? "Save it. Find it. Share it."
+              : "Every play, ready when you need it"}
+            subtitle="14-day free trial. Cancel anytime.">
 
-              {/* Individual */}
-              <button type="button"
-                onClick={() => setAnswers(a => ({ ...a, plan:"individual" }))}
-                style={{
-                  textAlign:"left", cursor:"pointer",
-                  background: answers.plan === "individual" ? STEEP.apricotWash : STEEP.white,
-                  border:`1.5px solid ${answers.plan === "individual" ? STEEP.rust : "rgba(167,170,175,0.35)"}`,
-                  borderRadius:20, padding:"16px 18px",
-                }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline",
-                  marginBottom:6 }}>
-                  <span style={{ fontSize:17, fontWeight:500, color:STEEP.ink,
-                    letterSpacing:"-0.01em" }}>Individual</span>
-                  <span style={{ fontSize:15, color:STEEP.ink, fontWeight:500 }}>$14.99/mo</span>
-                </div>
-                <div style={{ fontSize:13, color:STEEP.graphite, lineHeight:1.45 }}>
-                  1 {answers.userType === "fan" ? "person" : "coach"} · 75 clips · personal playbook
-                </div>
-              </button>
+            {/* Social proof */}
+            <div style={{
+              background: STEEP.white,
+              border:`1px solid rgba(167,170,175,0.25)`,
+              borderRadius:14, padding:"12px 14px",
+              display:"flex", alignItems:"center", gap:10, marginBottom:4,
+            }}>
+              <div style={{ display:"flex", gap:1 }}>
+                {[0,1,2,3,4].map(i => (
+                  <svg key={i} width="13" height="13" viewBox="0 0 13 13" fill={STEEP.rust}>
+                    <path d="M6.5 1l1.7 3.4 3.8.5-2.8 2.6.7 3.7-3.4-1.8-3.4 1.8.7-3.7L1 4.9l3.8-.5z"/>
+                  </svg>
+                ))}
+              </div>
+              <div style={{ fontSize:12, color:STEEP.graphite, lineHeight:1.4,
+                letterSpacing:"-0.009em", flex:1 }}>
+                <span style={{ color:STEEP.ink, fontWeight:500 }}>
+                  "Replaced 3 different apps for me."
+                </span>{" "}
+                Coach Daniels, HS football
+              </div>
+            </div>
 
-              {/* Team — coaches only */}
+            <div style={{ display:"flex", flexDirection:"column", gap:12,
+              marginTop:14, paddingTop:6 }}>
+
+              {/* Annual — DEFAULT, recommended */}
+              <PaywallPlanCard
+                selected={answers.plan === "annual"}
+                onClick={() => setAnswers(a => ({ ...a, plan:"annual" }))}
+                name="Annual"
+                price="$7.42/mo"
+                sublabel="$89/year · 75 clips/mo · personal playbook"
+                badge="Best value"
+                badgeBg={STEEP.rust}
+                savings="Save 50%"
+              />
+
+              {/* Monthly anchor */}
+              <PaywallPlanCard
+                selected={answers.plan === "monthly"}
+                onClick={() => setAnswers(a => ({ ...a, plan:"monthly" }))}
+                name="Monthly"
+                price="$14.99/mo"
+                sublabel="75 clips/mo · personal playbook"
+              />
+
+              {/* Team — coaches only, recommended for staff */}
               {showTeamPlan && (
-                <button type="button"
+                <PaywallPlanCard
+                  selected={answers.plan === "team"}
                   onClick={() => setAnswers(a => ({ ...a, plan:"team" }))}
-                  style={{
-                    textAlign:"left", cursor:"pointer",
-                    background: answers.plan === "team" ? STEEP.apricotWash : STEEP.white,
-                    border:`1.5px solid ${answers.plan === "team" ? STEEP.rust : "rgba(167,170,175,0.35)"}`,
-                    borderRadius:20, padding:"16px 18px",
-                    position:"relative",
-                  }}>
-                  {(answers.staff === "staff" || answers.staff === "large") && (
-                    <div style={{ position:"absolute", top:-10, left:16,
-                      background:STEEP.rust, color:"#fff", fontSize:10, fontWeight:600,
-                      letterSpacing:"0.04em", textTransform:"uppercase",
-                      padding:"4px 10px", borderRadius:999 }}>
-                      Best for staff
-                    </div>
-                  )}
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline",
-                    marginBottom:6 }}>
-                    <span style={{ fontSize:17, fontWeight:500, color:STEEP.ink }}>Team</span>
-                    <span style={{ fontSize:15, color:STEEP.ink, fontWeight:500 }}>$49.99/mo</span>
-                  </div>
-                  <div style={{ fontSize:13, color:STEEP.graphite, lineHeight:1.45 }}>
-                    Up to 6 coaches · 2,000 clips · one shared playbook
-                  </div>
-                </button>
+                  name="Team"
+                  price="$49.99/mo"
+                  sublabel="Up to 6 coaches · 2,000 clips · shared playbook"
+                  badge={recommendTeam ? "Best for staff" : undefined}
+                  badgeBg={STEEP.ink}
+                />
               )}
             </div>
 
             <p style={{ fontSize:12, color:STEEP.dove, textAlign:"center",
-              marginTop:4, lineHeight:1.5, padding:"0 4px" }}>
-              {answers.plan === "free"
-                ? "Upgrade anytime from Profile"
-                : "7-day free trial on paid plans · Cancel anytime"}
+              marginTop:14, lineHeight:1.5, padding:"0 4px" }}>
+              14-day free trial on paid plans. Cancel anytime in Settings.
             </p>
+
+            {/* Trust links */}
+            <div style={{ display:"flex", justifyContent:"center", gap:14,
+              marginTop:6, flexWrap:"wrap" }}>
+              <button type="button"
+                style={{ background:"none", border:"none", cursor:"pointer",
+                  fontSize:11, color:STEEP.graphite, padding:6,
+                  fontFamily:STEEP.sans, letterSpacing:"-0.005em" }}>
+                Restore purchases
+              </button>
+              <span style={{ fontSize:11, color:STEEP.dove }}>·</span>
+              <button type="button"
+                style={{ background:"none", border:"none", cursor:"pointer",
+                  fontSize:11, color:STEEP.graphite, padding:6,
+                  fontFamily:STEEP.sans, letterSpacing:"-0.005em" }}>
+                Terms
+              </button>
+              <span style={{ fontSize:11, color:STEEP.dove }}>·</span>
+              <button type="button"
+                style={{ background:"none", border:"none", cursor:"pointer",
+                  fontSize:11, color:STEEP.graphite, padding:6,
+                  fontFamily:STEEP.sans, letterSpacing:"-0.005em" }}>
+                Privacy
+              </button>
+            </div>
           </OnboardingStepShell>
         )}
       </div>
 
       {/* Footer CTA */}
-      <div style={{ flexShrink:0, padding:`16px ${OB_PAD}px 40px`,
-        borderTop:`1px solid rgba(167,170,175,0.18)`,
-        background: STEEP.white }}>
-        <GlowButton label={continueLabel} onPress={goNext} disabled={!canContinue} />
-      </div>
+      {!hideTopBar && (
+        <div style={{ flexShrink:0, padding:`16px ${OB_PAD}px 40px`,
+          borderTop:`1px solid rgba(167,170,175,0.18)`,
+          background: STEEP.white }}>
+          <GlowButton label={continueLabel} onPress={goNext} disabled={!canContinue} />
+          {step === "paywall" && (
+            <button type="button"
+              onClick={() => setShowReverseTrial(true)}
+              style={{ width:"100%", background:"none", border:"none",
+                padding:"14px 0 0", cursor:"pointer",
+                fontSize:14, color:STEEP.graphite, letterSpacing:"-0.009em",
+                fontFamily:STEEP.sans }}>
+              Maybe later
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Reverse trial on paywall dismiss */}
+      {showReverseTrial && (
+        <ReverseTrialSheet
+          onAccept={() => {
+            setShowReverseTrial(false);
+            setAnswers(a => ({ ...a, plan:"annual" }));
+            onComplete();
+          }}
+          onDecline={() => {
+            setShowReverseTrial(false);
+            setAnswers(a => ({ ...a, plan:"free" }));
+            onComplete();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -3735,27 +4030,15 @@ function TabBar({ active, onTab }: { active:string; onTab:(t:string)=>void }) {
 }
 
 // ─── PHONE FRAME ─────────────────────────────────────────────────────────────
+// Always fullscreen — no preview frame anywhere.
 function PhoneFrame({ children }: { children:React.ReactNode }) {
   const { isDark } = useTheme();
   const appBg = isDark ? C.bg : "#f2f2f7";
   return (
-    <div style={{ width:375, height:812, borderRadius:48, overflow:"hidden",
-      boxShadow:"0 0 0 10px #1c1c1e, 0 0 0 12px #3a3a3c, 0 40px 100px rgba(0,0,0,0.7)",
-      display:"flex", flexDirection:"column", background:appBg, position:"relative" }}>
-      <div style={{ height:44, background:"#000", display:"flex", justifyContent:"center",
-        alignItems:"center", flexShrink:0 }}>
-        <div style={{ width:110, height:30, background:"#000", borderRadius:99,
-          border:"2px solid #1c1c1e" }} />
-      </div>
-      <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column",
-        background:appBg }}>
-        {children}
-      </div>
-      <div style={{ height:8, background:"#000", display:"flex", justifyContent:"center",
-        alignItems:"center", flexShrink:0, paddingBottom:4 }}>
-        <div style={{ width:100, height:4, borderRadius:99,
-          background: isDark ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.5)" }} />
-      </div>
+    <div style={{ width:"100vw", height:"100vh", overflow:"hidden",
+      display:"flex", flexDirection:"column", background:appBg,
+      position:"fixed", top:0, left:0 }}>
+      {children}
     </div>
   );
 }
@@ -3787,29 +4070,15 @@ export default function App() {
     <LikesCtx.Provider value={{ likedIds, toggleLike }}>
     <ThemeCtx.Provider value={{ isDark, toggleTheme }}>
     <ToastProvider>
-    <div style={{ minHeight:"100vh", display:"flex", flexDirection:"column", alignItems:"center",
-      justifyContent:"center", background: isDark ? "#0a0a0c" : "#e8e8ec", padding:"24px 0",
+    <div style={{
+      minHeight:"100vh",
+      display:"flex", flexDirection:"column",
+      alignItems:"stretch", justifyContent:"flex-start",
+      background: isDark ? C.bg : "#f2f2f7",
+      padding: 0, gap: 0,
       fontFamily: STEEP.sans, WebkitFontSmoothing:"antialiased",
-      color: isDark ? "#fff" : STEEP.ink, gap:20 }}>
-
-      <div style={{ display:"flex", alignItems:"center", gap:16 }}>
-        <div style={{ fontSize:11, color: isDark ? "rgba(255,255,255,.2)" : STEEP.graphite, letterSpacing:"0.08em", fontWeight:500 }}>
-          Playbook · Preview
-        </div>
-        {authed && (
-          <button
-            onClick={() => navigate(screen.id === "share-ext" ? { id:"feed" } : { id:"share-ext" })}
-            style={{
-              background: screen.id === "share-ext" ? "rgba(51,214,125,0.2)" : "rgba(255,255,255,0.07)",
-              border:`1px solid ${screen.id === "share-ext" ? "rgba(51,214,125,0.4)" : "rgba(255,255,255,0.12)"}`,
-              borderRadius:999, padding:"5px 12px", cursor:"pointer",
-              fontSize:11, fontWeight:500,
-              color: screen.id === "share-ext" ? "#33D67D" : "rgba(255,255,255,0.5)",
-            }}>
-            {screen.id === "share-ext" ? "← Back" : "📤 Share Sheet"}
-          </button>
-        )}
-      </div>
+      color: isDark ? "#fff" : STEEP.ink,
+    }}>
 
       <PhoneFrame>
         <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
