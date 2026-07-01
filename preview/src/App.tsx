@@ -14,6 +14,55 @@ const LikesCtx = createContext<{
 }>({ likedIds: new Set(), toggleLike: () => {} });
 function useLikes() { return useContext(LikesCtx); }
 
+// ─── Streak context ───────────────────────────────────────────────────────────
+// Research-backed: Duolingo saw 40% more 7+ day users after making "one action per day"
+// the streak trigger. Loss aversion kicks in around Day 7. So every save extends the
+// streak, streak freezes protect it, and we surface a celebration at 7 days.
+type StreakState = {
+  count: number;             // consecutive days of activity
+  lastActiveDate: string;    // YYYY-MM-DD in local time
+  totalSaves: number;        // lifetime saves
+  freezes: number;           // saved days when they don't act (unlocked at 7)
+  celebratedMilestones: number[]; // [7, 30, 100...] milestones already shown
+};
+
+const STREAK_KEY = "playbook.streak.v1";
+function loadStreak(): StreakState {
+  if (typeof window === "undefined") return emptyStreak();
+  try {
+    const raw = localStorage.getItem(STREAK_KEY);
+    if (!raw) return emptyStreak();
+    const parsed = JSON.parse(raw);
+    return { ...emptyStreak(), ...parsed };
+  } catch {
+    return emptyStreak();
+  }
+}
+function emptyStreak(): StreakState {
+  return { count: 0, lastActiveDate: "", totalSaves: 0, freezes: 0, celebratedMilestones: [] };
+}
+function todayStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function daysBetween(a: string, b: string): number {
+  if (!a || !b) return 999;
+  const da = new Date(a + "T00:00:00").getTime();
+  const db = new Date(b + "T00:00:00").getTime();
+  return Math.round((db - da) / 86400000);
+}
+
+const StreakCtx = createContext<{
+  streak: StreakState;
+  recordSave: () => { milestone: number | null };
+  acknowledgeMilestone: (m:number) => void;
+}>({
+  streak: emptyStreak(),
+  recordSave: () => ({ milestone: null }),
+  acknowledgeMilestone: () => {},
+});
+function useStreak() { return useContext(StreakCtx); }
+
 // ─── Toast context ────────────────────────────────────────────────────────────
 const ToastCtx = createContext<(msg: string) => void>(() => {});
 function useToast() { return useContext(ToastCtx); }
@@ -842,6 +891,7 @@ function FeedCard({ play, isActive }:
   const [showShareSheet, setShowShareSheet] = useState(false);
   const [savedTo, setSavedTo]           = useState<string|null>(play.savedAt);
   const { likedIds, toggleLike }        = useLikes();
+  const { recordSave }                  = useStreak();
   const liked                           = likedIds.has(play.id);
   const [likeCount]                     = useState(Math.floor(Math.random() * 600) + 80);
   const [paused, setPaused]             = useState(false);
@@ -863,7 +913,10 @@ function FeedCard({ play, isActive }:
         clearTimeout(tapTimer.current);
         tapTimer.current = null;
       }
-      if (!liked) toggleLike(play.id);
+      if (!liked) {
+        toggleLike(play.id);
+        recordSave();
+      }
       setDoubleTapHeart(true);
       setTimeout(() => setDoubleTapHeart(false), 900);
     } else {
@@ -976,7 +1029,7 @@ function FeedCard({ play, isActive }:
         flexDirection:"column", alignItems:"center", gap:22 }}>
 
         {/* Like */}
-        <button onClick={e => { e.stopPropagation(); toggleLike(play.id); }}
+        <button onClick={e => { e.stopPropagation(); if (!liked) recordSave(); toggleLike(play.id); }}
           style={{ background:"none", border:"none",
             cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:5 }}>
           <div style={{ width:42, height:42, borderRadius:"50%",
@@ -1220,6 +1273,9 @@ function FeedScreen() {
         </span>
       </div>
 
+      {/* Streak badge — top right corner */}
+      <StreakBadge />
+
       {/* Snap scroll */}
       <div
         ref={scrollRef}
@@ -1296,6 +1352,9 @@ function PlaybookScreen({ navigate }: { navigate:(s:Screen)=>void }) {
       <div style={{ flex:1, overflowY:"auto", padding:"16px 16px 100px",
         display:"flex", flexDirection:"column", gap:10 }}
         className="hide-scrollbar">
+
+        {/* Streak card — self-mastery reward, top of Playbook */}
+        <StreakCard />
 
         {/* ── Liked Plays card ───────────────────────────────────────────── */}
         <PressRow onClick={() => navigate({ id:"liked" })}>
@@ -2883,6 +2942,203 @@ function XsAndOsAnimation() {
   );
 }
 
+// ─── STREAK COMPONENTS ────────────────────────────────────────────────────────
+// Subtle badge for the top of the feed. Only appears when streak > 0.
+function StreakBadge() {
+  const { streak } = useStreak();
+  if (streak.count === 0) return null;
+  return (
+    <div style={{
+      position:"absolute", top:16, right:16, zIndex:6,
+      display:"flex", alignItems:"center", gap:5,
+      padding:"6px 10px", borderRadius:99,
+      background:"rgba(0,0,0,0.35)",
+      backdropFilter:"blur(10px)",
+      WebkitBackdropFilter:"blur(10px)",
+      border:"1px solid rgba(255,255,255,0.12)",
+    }}>
+      <FlameIcon size={13} />
+      <span style={{ fontSize:12.5, fontWeight:600, color:"#fff",
+        letterSpacing:"-0.005em", fontVariantNumeric:"tabular-nums" }}>
+        {streak.count}
+      </span>
+    </div>
+  );
+}
+
+// Larger streak card for the Playbook screen — self-mastery reward
+function StreakCard() {
+  const { streak } = useStreak();
+  const { isDark } = useTheme();
+  const T = th(isDark);
+  const hasStreak = streak.count > 0;
+  const nextMilestone = streak.count < 7 ? 7 : streak.count < 30 ? 30 : streak.count < 100 ? 100 : 365;
+  const daysToNext = nextMilestone - streak.count;
+
+  return (
+    <div style={{
+      background: T.card,
+      border:`1px solid ${T.cardBorder}`,
+      borderRadius:18, padding:"14px 16px",
+      display:"flex", alignItems:"center", gap:12,
+      boxShadow: T.cardShadow,
+    }}>
+      <div style={{
+        width:44, height:44, borderRadius:"50%",
+        background: hasStreak ? T.warm : (isDark ? "rgba(255,255,255,0.06)" : STEEP.fog),
+        display:"flex", alignItems:"center", justifyContent:"center",
+        flexShrink:0,
+      }}>
+        <FlameIcon size={22} color={hasStreak ? (isDark ? "#ff9366" : STEEP.rust) : T.textFaint} />
+      </div>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ display:"flex", alignItems:"baseline", gap:6 }}>
+          <span style={{ fontFamily:STEEP.serif, fontSize:22, fontWeight:400,
+            color:T.text, letterSpacing:"-0.02em", lineHeight:1,
+            fontVariantNumeric:"tabular-nums" }}>
+            {streak.count}
+          </span>
+          <span style={{ fontSize:13, color:T.textSec, letterSpacing:"-0.009em" }}>
+            day streak
+          </span>
+        </div>
+        <div style={{ fontSize:12, color:T.textFaint, marginTop:2,
+          letterSpacing:"-0.005em" }}>
+          {hasStreak
+            ? `${daysToNext} day${daysToNext === 1 ? "" : "s"} to ${nextMilestone}-day badge`
+            : "Save a play today to start your streak"}
+        </div>
+      </div>
+      {streak.freezes > 0 && (
+        <div style={{ display:"flex", alignItems:"center", gap:4,
+          padding:"5px 9px", borderRadius:99,
+          background: isDark ? "rgba(180,210,255,0.15)" : "#e8f0f5",
+          border: isDark ? "1px solid rgba(180,210,255,0.2)" : "1px solid #d1dde6",
+          flexShrink:0 }}>
+          <span style={{ fontSize:11 }}>❄️</span>
+          <span style={{ fontSize:11, fontWeight:600,
+            color: isDark ? "#a8c9de" : "#4a6b7c",
+            letterSpacing:"-0.005em", fontVariantNumeric:"tabular-nums" }}>
+            {streak.freezes}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FlameIcon({ size = 16, color = "#ff6a3d" }: { size?:number; color?:string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M12 2c1 3.5 4 5 4 8.5a4 4 0 01-8 0c0-1 .3-2 .8-3-.8.5-1.8 2-1.8 4a5.2 5.2 0 0010.4 0c0-4.5-3.5-6.5-5.4-9.5z"
+        fill={color}/>
+      <path d="M12 12c.5 1.5 2 2.2 2 4a2 2 0 01-4 0c0-1.5 1-2.5 2-4z"
+        fill="#ffd44d"/>
+    </svg>
+  );
+}
+
+// Milestone celebration modal — shown when user hits 7, 30, 100, 365 day streak
+function MilestoneModal({ count, onClose }: { count:number; onClose:()=>void }) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), 10);
+    return () => clearTimeout(t);
+  }, []);
+
+  const title = count === 7 ? "One week strong"
+    : count === 30 ? "A month in the books"
+    : count === 100 ? "Triple digits"
+    : "365 days";
+  const subtitle = count === 7 ? "You just hit a 7-day streak. This is where it gets easier."
+    : count === 30 ? "A month of building your playbook. The habit is real now."
+    : count === 100 ? "100 days. Most coaches never make it here."
+    : "A full year of Playbook. You're in rare company.";
+
+  function close() {
+    setVisible(false);
+    setTimeout(onClose, 280);
+  }
+
+  return (
+    <div style={{
+      position:"fixed", inset:0, zIndex:100,
+      background:`rgba(0,0,0,${visible ? 0.6 : 0})`,
+      transition:"background .3s ease",
+      display:"flex", alignItems:"center", justifyContent:"center",
+      padding:24,
+    }} onClick={close}>
+      <div onClick={e => e.stopPropagation()}
+        style={{
+          background: STEEP.white,
+          borderRadius:24, padding:"32px 28px 24px",
+          maxWidth:340, width:"100%",
+          transform:`scale(${visible ? 1 : 0.9})`,
+          opacity: visible ? 1 : 0,
+          transition:"transform .32s cubic-bezier(0.32,0.72,0,1), opacity .28s",
+          textAlign:"center", position:"relative", overflow:"hidden",
+        }}>
+        <div style={{ position:"absolute", top:-30, right:-30, width:150, height:150,
+          borderRadius:"50%", pointerEvents:"none",
+          background:`radial-gradient(circle, ${STEEP.apricotWash} 0%, transparent 70%)`,
+          opacity:0.9 }} />
+        <div style={{ position:"absolute", bottom:-40, left:-30, width:130, height:130,
+          borderRadius:"50%", pointerEvents:"none",
+          background:`radial-gradient(circle, ${STEEP.apricotWash} 0%, transparent 70%)`,
+          opacity:0.6 }} />
+
+        <div style={{ position:"relative" }}>
+          <div style={{
+            width:80, height:80, borderRadius:"50%", margin:"0 auto 20px",
+            background:STEEP.apricotWash, display:"flex",
+            alignItems:"center", justifyContent:"center",
+          }}>
+            <FlameIcon size={42} />
+          </div>
+          <div style={{ fontFamily:STEEP.serif, fontSize:56, fontWeight:400,
+            color:STEEP.rust, letterSpacing:"-0.03em", lineHeight:1,
+            marginBottom:8, fontVariantNumeric:"tabular-nums" }}>
+            {count}
+          </div>
+          <h2 style={{ fontFamily:STEEP.serif, fontSize:26, fontWeight:400,
+            color:STEEP.ink, letterSpacing:"-0.025em", lineHeight:1.2,
+            margin:0, marginBottom:10 }}>
+            {title}
+          </h2>
+          <p style={{ fontSize:14.5, color:STEEP.graphite, letterSpacing:"-0.005em",
+            lineHeight:1.5, margin:0, marginBottom:20, padding:"0 8px" }}>
+            {subtitle}
+          </p>
+
+          {count === 7 && (
+            <div style={{
+              background:"#f6f0e8", borderRadius:12, padding:"10px 14px",
+              display:"flex", alignItems:"center", gap:8, marginBottom:20,
+              border:"1px solid rgba(93,42,26,0.1)",
+            }}>
+              <span style={{ fontSize:16 }}>❄️</span>
+              <span style={{ fontSize:12.5, color:STEEP.ink,
+                letterSpacing:"-0.005em", flex:1, textAlign:"left", lineHeight:1.4 }}>
+                <b>You earned a Streak Freeze.</b> Miss a day, keep your streak.
+              </span>
+            </div>
+          )}
+
+          <div onClick={close}
+            style={{
+              background:STEEP.ink, borderRadius:999, padding:"14px 0",
+              textAlign:"center", cursor:"pointer",
+              boxShadow:STEEP.cardShadow,
+            }}>
+            <span style={{ fontSize:15, fontWeight:500, color:"#fff",
+              letterSpacing:"-0.009em" }}>Keep building</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── GLOW BUTTON ─────────────────────────────────────────────────────────────
 function GlowButton({ label, onPress, accent = false, disabled = false }:
   { label:string; onPress:()=>void; accent?:boolean; disabled?:boolean }) {
@@ -4063,12 +4319,94 @@ export default function App() {
       return next;
     });
 
+  // ── Streak state (persisted to localStorage) ──────────────────────────────
+  const [streak, setStreak] = useState<StreakState>(loadStreak);
+  const [pendingMilestone, setPendingMilestone] = useState<number | null>(null);
+
+  useEffect(() => {
+    try { localStorage.setItem(STREAK_KEY, JSON.stringify(streak)); } catch {}
+  }, [streak]);
+
+  // Handle day rollover — if user missed a day, reset streak (unless they have freezes).
+  // Runs once on mount.
+  useEffect(() => {
+    const today = todayStr();
+    if (!streak.lastActiveDate) return;
+    const gap = daysBetween(streak.lastActiveDate, today);
+    if (gap <= 0) return; // same day or in future — no action
+    if (gap === 1) return; // consecutive — will be handled on next save
+    // gap >= 2: streak broke unless they have freezes
+    if (streak.freezes >= gap - 1) {
+      // Use freezes to cover missed days
+      setStreak(s => ({
+        ...s,
+        freezes: s.freezes - (gap - 1),
+        // lastActiveDate stays — they still need to act today to keep counting
+      }));
+    } else {
+      // Reset streak
+      setStreak(s => ({ ...s, count: 0 }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const recordSave = (): { milestone: number | null } => {
+    const today = todayStr();
+    let milestoneHit: number | null = null;
+
+    setStreak(prev => {
+      const gap = prev.lastActiveDate ? daysBetween(prev.lastActiveDate, today) : 999;
+      let newCount = prev.count;
+      let newFreezes = prev.freezes;
+
+      if (prev.lastActiveDate === today) {
+        // Already counted today — just bump saves
+      } else if (gap === 1) {
+        newCount = prev.count + 1;
+      } else if (gap >= 2 && prev.freezes >= gap - 1) {
+        newCount = prev.count + 1;
+        newFreezes = prev.freezes - (gap - 1);
+      } else {
+        // Streak broke or first ever save
+        newCount = 1;
+      }
+
+      // Milestone detection — 7, 30, 100, 365
+      const milestones = [7, 30, 100, 365];
+      const hit = milestones.find(m =>
+        newCount === m && !prev.celebratedMilestones.includes(m)
+      );
+      if (hit) milestoneHit = hit;
+
+      // Award a freeze at every 7-day streak (max 3 stored)
+      if (newCount > 0 && newCount % 7 === 0 && newCount !== prev.count) {
+        newFreezes = Math.min(3, newFreezes + 1);
+      }
+
+      return {
+        count: newCount,
+        lastActiveDate: today,
+        totalSaves: prev.totalSaves + 1,
+        freezes: newFreezes,
+        celebratedMilestones: hit
+          ? [...prev.celebratedMilestones, hit]
+          : prev.celebratedMilestones,
+      };
+    });
+
+    if (milestoneHit) setPendingMilestone(milestoneHit);
+    return { milestone: milestoneHit };
+  };
+
+  const acknowledgeMilestone = (_m: number) => setPendingMilestone(null);
+
   function navigate(s: Screen) { setScreen(s); }
   const tabId = ["feed","playbook","profile"].includes(screen.id) ? screen.id : null;
 
   return (
     <LikesCtx.Provider value={{ likedIds, toggleLike }}>
     <ThemeCtx.Provider value={{ isDark, toggleTheme }}>
+    <StreakCtx.Provider value={{ streak, recordSave, acknowledgeMilestone }}>
     <ToastProvider>
     <div style={{
       minHeight:"100vh",
@@ -4118,7 +4456,16 @@ export default function App() {
         Browse saved clips in the Playbook tab · Toggle theme in Profile → Appearance
       </div>
     </div>
+    {/* Streak milestone celebration modal (shown when 7/30/100/365 hit) */}
+    {pendingMilestone && (
+      <MilestoneModal
+        count={pendingMilestone}
+        onClose={() => acknowledgeMilestone(pendingMilestone)}
+      />
+    )}
+
     </ToastProvider>
+    </StreakCtx.Provider>
     </ThemeCtx.Provider>
     </LikesCtx.Provider>
   );
