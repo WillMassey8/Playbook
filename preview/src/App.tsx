@@ -659,6 +659,7 @@ function ClipShareSheet({ play, onClose }: { play: typeof FEED[0]; onClose: () =
   const { isDark } = useTheme();
   const T = th(isDark);
   const [copied, setCopied] = useState(false);
+  const [shareCardOpen, setShareCardOpen] = useState(false);
 
   function copyLink() {
     setCopied(true);
@@ -752,6 +753,19 @@ function ClipShareSheet({ play, onClose }: { play: typeof FEED[0]; onClose: () =
   ];
 
   const listActions = [
+    {
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <rect x="3" y="2" width="14" height="16" rx="2.5"
+            stroke={STEEP.rust} strokeWidth="1.6"/>
+          <path d="M6 6h8M6 10h8M6 14h5" stroke={STEEP.rust}
+            strokeWidth="1.6" strokeLinecap="round"/>
+        </svg>
+      ),
+      label: "Share as Card",
+      action: () => { setShareCardOpen(true); },
+      highlight: true,
+    },
     {
       icon: (
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -880,6 +894,14 @@ function ClipShareSheet({ play, onClose }: { play: typeof FEED[0]; onClose: () =
           </button>
         </div>
       </div>
+
+      {/* Shareable card modal — viral loop */}
+      {shareCardOpen && (
+        <ShareCardModal
+          play={play as ShareableCardPlay}
+          onClose={() => { setShareCardOpen(false); onClose(); }}
+        />
+      )}
     </>
   );
 }
@@ -3139,7 +3161,394 @@ function MilestoneModal({ count, onClose }: { count:number; onClose:()=>void }) 
   );
 }
 
-// ─── GLOW BUTTON ─────────────────────────────────────────────────────────────
+// ─── SHAREABLE CLIP CARD ─────────────────────────────────────────────────────
+// Generates a branded image card for a saved play. Every share becomes a
+// marketing asset — the viral loop for acquisition. Uses html2canvas-lite
+// approach: build the card as SVG, convert to PNG via canvas, then use
+// navigator.share() on mobile or download on desktop.
+
+type ShareableCardPlay = {
+  id: string;
+  title: string;
+  platform: "twitter" | "instagram" | string;
+  categoryId?: string;
+  thumbnail?: string;
+  views?: number;
+};
+
+function ShareCardModal({ play, onClose }: {
+  play: ShareableCardPlay;
+  onClose: () => void;
+}) {
+  const [visible, setVisible] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), 10);
+    return () => clearTimeout(t);
+  }, []);
+
+  function close() {
+    setVisible(false);
+    setTimeout(onClose, 260);
+  }
+
+  const cat = CATEGORIES.find(c => c.id === play.categoryId);
+  const parent = cat?.parentId ? CATEGORIES.find(c => c.id === cat!.parentId) : null;
+  const catLabel = parent ? `${parent.name} · ${cat?.name}` : cat?.name || "Playbook";
+
+  // Render card to PNG using canvas
+  async function renderCardToBlob(): Promise<Blob | null> {
+    const width = 1080;
+    const height = 1350; // Instagram-ideal 4:5 portrait
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    // Cream background (matches app's light theme)
+    ctx.fillStyle = STEEP.fog;
+    ctx.fillRect(0, 0, width, height);
+
+    // Apricot wash blob (top-right)
+    const grad = ctx.createRadialGradient(
+      width * 0.85, height * 0.15, 0,
+      width * 0.85, height * 0.15, width * 0.6
+    );
+    grad.addColorStop(0, STEEP.apricotWash);
+    grad.addColorStop(1, "rgba(251,225,209,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, height);
+
+    // Second apricot wash (bottom-left)
+    const grad2 = ctx.createRadialGradient(
+      width * 0.1, height * 0.9, 0,
+      width * 0.1, height * 0.9, width * 0.5
+    );
+    grad2.addColorStop(0, "rgba(251,225,209,0.6)");
+    grad2.addColorStop(1, "rgba(251,225,209,0)");
+    ctx.fillStyle = grad2;
+    ctx.fillRect(0, 0, width, height);
+
+    // Top bar: category eyebrow
+    ctx.fillStyle = STEEP.rust;
+    ctx.font = "600 28px 'Inter', system-ui, sans-serif";
+    ctx.textBaseline = "top";
+    ctx.textAlign = "left";
+    const eyebrow = catLabel.toUpperCase();
+    ctx.fillText(eyebrow, 80, 100, width - 160);
+
+    // Small line under eyebrow
+    ctx.strokeStyle = STEEP.rust;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(80, 145);
+    ctx.lineTo(140, 145);
+    ctx.stroke();
+
+    // Main title — Playfair serif, big
+    ctx.fillStyle = STEEP.ink;
+    const title = play.title || "Untitled Play";
+    // Approximate serif with a large weight (browser will fall back if Playfair unavailable)
+    // Word wrap the title
+    ctx.font = "400 76px 'Playfair Display', 'Georgia', serif";
+    wrapText(ctx, title, 80, 220, width - 160, 92, 5);
+
+    // Attribution block near bottom
+    const attrY = height - 340;
+
+    // Playbook logo mark — flame + wordmark
+    // Flame circle
+    ctx.beginPath();
+    ctx.arc(80 + 44, attrY + 44, 44, 0, Math.PI * 2);
+    ctx.fillStyle = STEEP.apricotWash;
+    ctx.fill();
+
+    // Flame shape (simplified triangle)
+    ctx.fillStyle = STEEP.rust;
+    ctx.beginPath();
+    ctx.moveTo(80 + 44, attrY + 18);
+    ctx.bezierCurveTo(
+      80 + 68, attrY + 42,
+      80 + 68, attrY + 66,
+      80 + 44, attrY + 74
+    );
+    ctx.bezierCurveTo(
+      80 + 20, attrY + 66,
+      80 + 20, attrY + 42,
+      80 + 44, attrY + 18
+    );
+    ctx.fill();
+
+    // Wordmark
+    ctx.fillStyle = STEEP.ink;
+    ctx.font = "500 34px 'Inter', system-ui, sans-serif";
+    ctx.textBaseline = "top";
+    ctx.fillText("Playbook", 80 + 108, attrY + 22);
+    ctx.fillStyle = STEEP.graphite;
+    ctx.font = "400 22px 'Inter', system-ui, sans-serif";
+    ctx.fillText("Save it. Find it. Share it.", 80 + 108, attrY + 62);
+
+    // Bottom border stripe
+    ctx.fillStyle = STEEP.ink;
+    ctx.fillRect(0, height - 100, width, 100);
+    ctx.fillStyle = STEEP.fog;
+    ctx.font = "600 28px 'Inter', system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("playbook.app", width / 2, height - 50);
+
+    return new Promise(resolve => canvas.toBlob(b => resolve(b), "image/png", 0.95));
+  }
+
+  // Helper: word-wrap text on canvas
+  function wrapText(
+    ctx: CanvasRenderingContext2D, text: string, x: number, y: number,
+    maxWidth: number, lineHeight: number, maxLines: number,
+  ) {
+    const words = text.split(" ");
+    let line = "";
+    let currentY = y;
+    let linesWritten = 0;
+
+    for (let n = 0; n < words.length; n++) {
+      const testLine = line ? `${line} ${words[n]}` : words[n];
+      const width = ctx.measureText(testLine).width;
+      if (width > maxWidth && line) {
+        if (linesWritten === maxLines - 1) {
+          // Truncate with ellipsis
+          let truncated = line;
+          while (ctx.measureText(truncated + "…").width > maxWidth && truncated.length > 0) {
+            truncated = truncated.slice(0, -1);
+          }
+          ctx.fillText(truncated + "…", x, currentY);
+          return;
+        }
+        ctx.fillText(line, x, currentY);
+        line = words[n];
+        currentY += lineHeight;
+        linesWritten++;
+      } else {
+        line = testLine;
+      }
+    }
+    if (linesWritten < maxLines) ctx.fillText(line, x, currentY);
+  }
+
+  async function handleShare() {
+    setBusy(true);
+    setFeedback(null);
+    try {
+      const blob = await renderCardToBlob();
+      if (!blob) throw new Error("Failed to render card");
+
+      const filename = `playbook-${play.id}.png`;
+      const file = new File([blob], filename, { type: "image/png" });
+
+      // Prefer native share on mobile (creates the viral loop we want)
+      const nav: any = navigator;
+      if (nav.canShare && nav.canShare({ files: [file] })) {
+        await nav.share({
+          files: [file],
+          title: "Playbook",
+          text: `${play.title} — via Playbook`,
+        });
+        setFeedback("Shared!");
+        setTimeout(close, 900);
+      } else {
+        // Desktop / unsupported — download
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setFeedback("Saved to downloads");
+        setTimeout(close, 1400);
+      }
+    } catch (e: any) {
+      // User cancellation of native share throws AbortError — silent
+      if (e?.name !== "AbortError") {
+        setFeedback("Couldn't create card");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCopy() {
+    setBusy(true);
+    setFeedback(null);
+    try {
+      const blob = await renderCardToBlob();
+      if (!blob) throw new Error("Failed to render");
+      const nav: any = navigator;
+      if (nav.clipboard && nav.clipboard.write) {
+        await nav.clipboard.write([
+          new ClipboardItem({ "image/png": blob }),
+        ]);
+        setFeedback("Copied!");
+        setTimeout(close, 900);
+      } else {
+        setFeedback("Copy not supported");
+      }
+    } catch {
+      setFeedback("Couldn't copy");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      onClick={close}
+      style={{
+        position:"fixed", inset:0, zIndex:80,
+        background:`rgba(0,0,0,${visible ? 0.65 : 0})`,
+        transition:"background .3s ease",
+        display:"flex", alignItems:"flex-end", justifyContent:"center",
+      }}>
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width:"100%", maxWidth:520,
+          background: STEEP.white,
+          borderRadius:"24px 24px 0 0",
+          padding:"12px 20px 28px",
+          transform:`translateY(${visible ? 0 : 100}%)`,
+          transition:"transform .32s cubic-bezier(0.32,0.72,0,1)",
+          position:"relative",
+        }}>
+
+        {/* Drag handle */}
+        <div style={{ display:"flex", justifyContent:"center", paddingBottom:14 }}>
+          <div style={{ width:36, height:4, borderRadius:99, background:STEEP.dove }} />
+        </div>
+
+        {/* Preview card (visual only — real render is on canvas) */}
+        <div ref={cardRef} style={{
+          aspectRatio:"4/5", width:"100%", maxHeight:420,
+          background: STEEP.fog,
+          borderRadius:18, overflow:"hidden", position:"relative",
+          border:`1px solid rgba(167,170,175,0.25)`,
+          marginBottom:16,
+        }}>
+          {/* Apricot washes */}
+          <div style={{ position:"absolute", top:"-15%", right:"-15%",
+            width:"70%", aspectRatio:"1",
+            background:`radial-gradient(circle, ${STEEP.apricotWash} 0%, transparent 70%)`,
+            pointerEvents:"none" }} />
+          <div style={{ position:"absolute", bottom:"-15%", left:"-15%",
+            width:"55%", aspectRatio:"1",
+            background:`radial-gradient(circle, ${STEEP.apricotWash} 0%, transparent 70%)`,
+            opacity:0.6, pointerEvents:"none" }} />
+
+          {/* Content */}
+          <div style={{ position:"relative", padding:"22px 24px 0",
+            display:"flex", flexDirection:"column", height:"100%" }}>
+            <div style={{ fontSize:10, color:STEEP.rust, fontWeight:600,
+              letterSpacing:"0.12em", textTransform:"uppercase", marginBottom:8 }}>
+              {catLabel}
+            </div>
+            <div style={{ width:34, height:2.5, background:STEEP.rust,
+              borderRadius:1, marginBottom:14 }} />
+            <div style={{ fontFamily:STEEP.serif, fontSize:26, fontWeight:400,
+              color:STEEP.ink, letterSpacing:"-0.025em", lineHeight:1.15,
+              flex:1, overflow:"hidden" }}>
+              {play.title}
+            </div>
+
+            {/* Attribution */}
+            <div style={{ display:"flex", alignItems:"center", gap:10,
+              padding:"12px 0" }}>
+              <div style={{ width:32, height:32, borderRadius:"50%",
+                background:STEEP.apricotWash, display:"flex",
+                alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                <FlameIcon size={17} />
+              </div>
+              <div style={{ minWidth:0 }}>
+                <div style={{ fontSize:13, fontWeight:500, color:STEEP.ink,
+                  letterSpacing:"-0.005em", lineHeight:1.1 }}>Playbook</div>
+                <div style={{ fontSize:10, color:STEEP.graphite,
+                  letterSpacing:"-0.005em" }}>Save it. Find it. Share it.</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom stripe */}
+          <div style={{ position:"absolute", bottom:0, left:0, right:0,
+            height:26, background:STEEP.ink,
+            display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <span style={{ fontSize:10, fontWeight:600, color:STEEP.fog,
+              letterSpacing:"0.02em" }}>playbook.app</span>
+          </div>
+        </div>
+
+        {/* Title of the sheet */}
+        <div style={{ textAlign:"center", marginBottom:14 }}>
+          <div style={{ fontFamily:STEEP.serif, fontSize:20, fontWeight:400,
+            color:STEEP.ink, letterSpacing:"-0.02em", marginBottom:4 }}>
+            Share this play
+          </div>
+          <div style={{ fontSize:12.5, color:STEEP.graphite,
+            letterSpacing:"-0.005em" }}>
+            Post it, text it, drop it in the group chat.
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display:"flex", gap:10 }}>
+          <button
+            onClick={handleShare}
+            disabled={busy}
+            style={{
+              flex:1, background:STEEP.ink, borderRadius:14,
+              padding:"14px 0", border:"none",
+              cursor: busy ? "default" : "pointer",
+              boxShadow: STEEP.cardShadow, opacity: busy ? 0.5 : 1,
+            }}>
+            <span style={{ fontSize:15, fontWeight:500, color:"#fff",
+              letterSpacing:"-0.009em" }}>
+              {busy ? "Working…" : "Share"}
+            </span>
+          </button>
+          <button
+            onClick={handleCopy}
+            disabled={busy}
+            style={{
+              width:52, background:STEEP.fog, borderRadius:14,
+              padding:"14px 0", border:`1px solid rgba(167,170,175,0.35)`,
+              cursor: busy ? "default" : "pointer", opacity: busy ? 0.5 : 1,
+              display:"flex", alignItems:"center", justifyContent:"center",
+            }}>
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+              <rect x="6" y="6" width="12" height="12" rx="2"
+                stroke={STEEP.ink} strokeWidth="1.6"/>
+              <path d="M14 6V4a2 2 0 00-2-2H4a2 2 0 00-2 2v8a2 2 0 002 2h2"
+                stroke={STEEP.ink} strokeWidth="1.6"/>
+            </svg>
+          </button>
+        </div>
+
+        {feedback && (
+          <div style={{ textAlign:"center", marginTop:12,
+            fontSize:13, color:STEEP.rust, fontWeight:500,
+            letterSpacing:"-0.005em" }}>
+            {feedback}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 function GlowButton({ label, onPress, accent = false, disabled = false }:
   { label:string; onPress:()=>void; accent?:boolean; disabled?:boolean }) {
   return (
