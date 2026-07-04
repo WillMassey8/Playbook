@@ -52,6 +52,16 @@ function daysBetween(a: string, b: string): number {
   return Math.round((db - da) / 86400000);
 }
 
+// Fisher-Yates shuffle (immutable)
+function shuffle<T>(arr: T[]): T[] {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 const StreakCtx = createContext<{
   streak: StreakState;
   recordSave: () => { milestone: number | null };
@@ -62,6 +72,93 @@ const StreakCtx = createContext<{
   acknowledgeMilestone: () => {},
 });
 function useStreak() { return useContext(StreakCtx); }
+
+// ─── Affinity / Personalization context ──────────────────────────────────────
+// Research-backed (Spotify): "two items are similar if they appear in the same
+// user's playlist." We track implicit signals per play and per category. The
+// algo weights recent actions heavier (recency-adjusted) and produces:
+//   - per-play affinity score (for reranking feed & recommendations)
+//   - per-category affinity (for suggesting new plays to add)
+// Uses ~90% exploit / 10% explore split (multi-armed bandit).
+type PlaySignals = {
+  opens: number;
+  replays: number;
+  likes: number;
+  shares: number;
+  lastAt: number; // Unix ms of most recent interaction
+};
+
+type AffinityState = {
+  plays: Record<string, PlaySignals>;
+};
+
+const AFFINITY_KEY = "playbook.affinity.v1";
+function loadAffinity(): AffinityState {
+  if (typeof window === "undefined") return { plays: {} };
+  try {
+    const raw = localStorage.getItem(AFFINITY_KEY);
+    if (!raw) return { plays: {} };
+    return JSON.parse(raw);
+  } catch {
+    return { plays: {} };
+  }
+}
+function emptySignals(): PlaySignals {
+  return { opens: 0, replays: 0, likes: 0, shares: 0, lastAt: 0 };
+}
+
+// Signal weights (Spotify-style: skips negative, likes strongest)
+const SIGNAL_WEIGHTS = {
+  open:   1,
+  replay: 2,
+  like:   5,
+  share:  4,
+};
+
+// Recency decay: how much older signals count vs newer ones.
+// Half-life of 30 days — a like 30 days ago is worth ~half of one today.
+function recencyMultiplier(lastAt: number): number {
+  if (!lastAt) return 1;
+  const daysAgo = (Date.now() - lastAt) / 86400000;
+  return Math.pow(0.5, daysAgo / 30);
+}
+
+function affinityForPlay(s: PlaySignals | undefined): number {
+  if (!s || s.lastAt === 0) return 0;
+  const raw =
+    s.opens   * SIGNAL_WEIGHTS.open +
+    s.replays * SIGNAL_WEIGHTS.replay +
+    s.likes   * SIGNAL_WEIGHTS.like +
+    s.shares  * SIGNAL_WEIGHTS.share;
+  return raw * recencyMultiplier(s.lastAt);
+}
+
+// Aggregate affinity for a category = sum of affinities of plays in it
+function affinityForCategory(catId: string, affinity: AffinityState): number {
+  const catIds = descendantIds(catId);
+  return FEED
+    .filter(p => catIds.has(p.categoryId))
+    .reduce((acc, p) => acc + affinityForPlay(affinity.plays[p.id]), 0);
+}
+
+type SignalKind = "open" | "replay" | "like" | "share";
+
+const AffinityCtx = createContext<{
+  affinity: AffinityState;
+  track: (playId: string, kind: SignalKind) => void;
+  rerankFeed: <T extends { id: string; categoryId: string }>(plays: T[]) => T[];
+  topCategories: () => { catId: string; score: number }[];
+  suggestSimilarPlays: <T extends { id: string; categoryId: string }>(
+    inCategoryId: string, excludeIds: Set<string>, plays: T[]
+  ) => T[];
+}>({
+  affinity: { plays: {} },
+  track: () => {},
+  rerankFeed: (p) => p,
+  topCategories: () => [],
+  suggestSimilarPlays: () => [],
+});
+function useAffinity() { return useContext(AffinityCtx); }
 
 // ─── Toast context ────────────────────────────────────────────────────────────
 const ToastCtx = createContext<(msg: string) => void>(() => {});
@@ -914,6 +1011,7 @@ function FeedCard({ play, isActive }:
   const [savedTo, setSavedTo]           = useState<string|null>(play.savedAt);
   const { likedIds, toggleLike }        = useLikes();
   const { recordSave }                  = useStreak();
+  const { track: trackSignal }          = useAffinity();
   const liked                           = likedIds.has(play.id);
   const [likeCount]                     = useState(Math.floor(Math.random() * 600) + 80);
   const [paused, setPaused]             = useState(false);
@@ -923,6 +1021,14 @@ function FeedCard({ play, isActive }:
   const tapTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const togglePause = () => setPaused(p => !p);
+
+  // Track "open" signal for personalization when card becomes active for 1+ seconds
+  useEffect(() => {
+    if (!isActive) return;
+    const t = setTimeout(() => trackSignal(play.id, "open"), 1000);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, play.id]);
 
   // Double-tap → like + floating heart; single-tap → pause (delayed to distinguish)
   function handleTap(e: React.MouseEvent) {
@@ -938,6 +1044,7 @@ function FeedCard({ play, isActive }:
       if (!liked) {
         toggleLike(play.id);
         recordSave();
+        trackSignal(play.id, "like");
       }
       setDoubleTapHeart(true);
       setTimeout(() => setDoubleTapHeart(false), 900);
@@ -1051,7 +1158,7 @@ function FeedCard({ play, isActive }:
         flexDirection:"column", alignItems:"center", gap:22 }}>
 
         {/* Like */}
-        <button onClick={e => { e.stopPropagation(); if (!liked) recordSave(); toggleLike(play.id); }}
+        <button onClick={e => { e.stopPropagation(); if (!liked) { recordSave(); trackSignal(play.id, "like"); } toggleLike(play.id); }}
           style={{ background:"none", border:"none",
             cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:5 }}>
           <div style={{ width:42, height:42, borderRadius:"50%",
@@ -1067,7 +1174,7 @@ function FeedCard({ play, isActive }:
         </button>
 
         {/* Share */}
-        <button onClick={e => { e.stopPropagation(); setShowShareSheet(true); }}
+        <button onClick={e => { e.stopPropagation(); trackSignal(play.id, "share"); setShowShareSheet(true); }}
           style={{ background:"none", border:"none", cursor:"pointer",
             display:"flex", flexDirection:"column", alignItems:"center", gap:5 }}>
           <div style={{ width:42, height:42, borderRadius:"50%",
@@ -1196,6 +1303,13 @@ function FeedScreen() {
   const touchStart = useRef<number>(0);
   const pulling    = useRef(false);
 
+  const { rerankFeed } = useAffinity();
+  // Personalized feed order — computed once on mount so scrolling doesn't shuffle.
+  // Refreshing (pull-to-refresh) re-runs the reranker for a fresh mix.
+  const [feedOrder, setFeedOrder] = useState<FeedPlay[]>(() =>
+    rerankFeed(FEED as unknown as FeedPlay[])
+  );
+
   const THRESHOLD = 64; // px to trigger refresh
 
   // ── Scroll tracking for active card ──────────────────────────────────────
@@ -1234,7 +1348,8 @@ function FeedScreen() {
     if (pullY >= 1) {
       setRefreshing(true);
       setPullY(0);
-      // Simulate network refresh
+      // Re-rank feed with fresh randomness on refresh
+      setFeedOrder(rerankFeed(FEED as unknown as FeedPlay[]));
       setTimeout(() => setRefreshing(false), 1600);
     } else {
       setPullY(0);
@@ -1288,7 +1403,7 @@ function FeedScreen() {
         background:"linear-gradient(rgba(0,0,0,0.5), transparent)" }}>
         {/* Debug tap-to-refresh (mousedown triggers refresh for desktop preview) */}
         <span
-          onMouseDown={() => { setRefreshing(true); setTimeout(() => setRefreshing(false), 1600); }}
+          onMouseDown={() => { setRefreshing(true); setFeedOrder(rerankFeed(FEED as unknown as FeedPlay[])); setTimeout(() => setRefreshing(false), 1600); }}
           style={{ fontSize:15, fontWeight:600, color:"rgba(255,255,255,0.9)",
             letterSpacing:"-0.01em", cursor:"default", userSelect:"none" }}>
           {refreshing ? "Refreshing…" : "For You"}
@@ -1312,7 +1427,7 @@ function FeedScreen() {
           transition: pulling.current ? "none" : "transform .3s cubic-bezier(.25,.46,.45,.94)",
         }}
         className="hide-scrollbar">
-        {FEED.map((play, i) => (
+        {feedOrder.map((play, i) => (
           <div key={play.id} style={{ height:"100%", scrollSnapAlign:"start",
             scrollSnapStop:"always", flexShrink:0 }}>
             <FeedCard play={play} isActive={activeIdx === i} />
@@ -1697,7 +1812,109 @@ function CategoryScreen({ catId, navigate, from }: { catId:string; navigate:(s:S
   );
 }
 
-type GridFilter = "recent" | "most-viewed" | "saved";
+// ─── SIMILAR PLAYS RECOMMENDATION CARD ────────────────────────────────────────
+// Spotify-style "Add plays like these" prompt. Shown at the bottom of a category
+// when there are recommendations the user hasn't added yet. Powered by the
+// AffinityCtx.suggestSimilarPlays algo.
+function SimilarPlaysCard({ inCategoryId, navigate }:
+  { inCategoryId: string; navigate: (s:Screen)=>void }) {
+  const { isDark } = useTheme();
+  const T = th(isDark);
+  const { likedIds } = useLikes();
+  const { suggestSimilarPlays } = useAffinity();
+
+  // In real app, this would query the wider Playbook library (not just saved plays).
+  // For now, use FEED as the candidate pool and exclude anything already liked.
+  const excludeIds = new Set(likedIds);
+  const suggestions = suggestSimilarPlays(inCategoryId, excludeIds, FEED as unknown as FeedPlay[]);
+  if (suggestions.length === 0) return null;
+
+  return (
+    <div style={{ padding:"0 16px 24px" }}>
+      <div style={{
+        background: T.card,
+        border: `1px solid ${T.cardBorder}`,
+        borderRadius: 20,
+        padding: "18px 18px 16px",
+        boxShadow: T.cardShadow,
+      }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8,
+          marginBottom:4 }}>
+          <div style={{ width:22, height:22, borderRadius:"50%",
+            background:isDark ? "rgba(255,214,150,0.15)" : STEEP.apricotWash,
+            display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+              <path d="M5.5 1v9M1 5.5h9" stroke={isDark ? "#ffbb7d" : STEEP.rust}
+                strokeWidth="1.8" strokeLinecap="round"/>
+            </svg>
+          </div>
+          <div style={{ fontSize:11, fontWeight:600,
+            color: isDark ? "#ffbb7d" : STEEP.rust,
+            letterSpacing:"0.06em", textTransform:"uppercase" }}>
+            Recommended
+          </div>
+        </div>
+        <div style={{ fontFamily: STEEP.serif, fontSize:20, fontWeight:400,
+          color: T.text, letterSpacing:"-0.02em", lineHeight:1.25,
+          marginBottom:6 }}>
+          Add more plays like these
+        </div>
+        <div style={{ fontSize:12.5, color: T.textFaint,
+          letterSpacing:"-0.005em", lineHeight:1.4, marginBottom:14 }}>
+          Coaches with plays in this category also saved these.
+        </div>
+
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {suggestions.slice(0, 3).map(play => (
+            <PressRow key={play.id}
+              onClick={() => navigate({ id:"clip", playId:play.id, from:{ id:"playbook" } })}>
+              <div style={{
+                display:"flex", alignItems:"center", gap:12,
+                padding:"10px 12px", borderRadius:12,
+                background: isDark ? "rgba(255,255,255,0.03)" : STEEP.fog,
+                border: `1px solid ${T.divider}`,
+              }}>
+                <div style={{ width:44, height:44, borderRadius:8, flexShrink:0,
+                  overflow:"hidden", position:"relative",
+                  background: `linear-gradient(135deg, ${play.gradient?.[0] || "#1a2440"}, ${play.gradient?.[1] || "#0d0d0f"})`,
+                }}>
+                  <div style={{ position:"absolute", inset:0,
+                    display:"flex", alignItems:"center", justifyContent:"center" }}>
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="white" opacity="0.7">
+                      <path d="M3 2l8 5-8 5V2z"/>
+                    </svg>
+                  </div>
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13.5, fontWeight:500, color: T.text,
+                    letterSpacing:"-0.009em", overflow:"hidden",
+                    textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                    {play.title}
+                  </div>
+                  <div style={{ fontSize:11, color: T.textFaint,
+                    letterSpacing:"-0.005em", marginTop:2 }}>
+                    {play.platform === "twitter" ? "X / Twitter" : "Instagram"}
+                    <span style={{ margin:"0 5px", opacity:0.5 }}>·</span>
+                    {play.views?.toLocaleString() || "0"} views
+                  </div>
+                </div>
+                <div style={{ width:26, height:26, borderRadius:"50%",
+                  background: isDark ? "rgba(255,255,255,0.06)" : "rgba(93,42,26,0.08)",
+                  display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <path d="M5 1v8M1 5h8" stroke={isDark ? "rgba(255,255,255,0.6)" : STEEP.rust}
+                      strokeWidth="1.6" strokeLinecap="round"/>
+                  </svg>
+                </div>
+              </div>
+            </PressRow>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 // ─── ALL CLIPS GRID SCREEN ────────────────────────────────────────────────────
 function GridScreen({ catId, label, navigate }: { catId:string; label:string; navigate:(s:Screen)=>void }) {
@@ -4051,7 +4268,8 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
 
       {/* Top bar */}
       {!hideTopBar && (
-        <div style={{ flexShrink:0, padding:"12px 20px 0",
+        <div style={{ flexShrink:0,
+          padding:"calc(12px + env(safe-area-inset-top)) 20px 0",
           display:"flex", alignItems:"center", justifyContent:"space-between" }}>
           <button type="button" onClick={goBack} aria-label="Back"
             style={{ background:"none", border:"none", cursor:"pointer",
@@ -4275,7 +4493,8 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
 
       {/* Footer CTA */}
       {!hideTopBar && (
-        <div style={{ flexShrink:0, padding:`16px ${OB_PAD}px 40px`,
+        <div style={{ flexShrink:0,
+          padding:`16px ${OB_PAD}px calc(24px + env(safe-area-inset-bottom))`,
           borderTop:`1px solid rgba(167,170,175,0.18)`,
           background: STEEP.white }}>
           <GlowButton label={continueLabel} onPress={goNext} disabled={!canContinue} />
@@ -4736,6 +4955,120 @@ export default function App() {
     try { localStorage.setItem(STREAK_KEY, JSON.stringify(streak)); } catch {}
   }, [streak]);
 
+  // ── Affinity / personalization state ──────────────────────────────────────
+  const [affinity, setAffinity] = useState<AffinityState>(loadAffinity);
+  useEffect(() => {
+    try { localStorage.setItem(AFFINITY_KEY, JSON.stringify(affinity)); } catch {}
+  }, [affinity]);
+
+  const trackSignal = (playId: string, kind: SignalKind) => {
+    setAffinity(prev => {
+      const cur = prev.plays[playId] || emptySignals();
+      const now = Date.now();
+      const updated: PlaySignals = {
+        opens:   cur.opens   + (kind === "open"   ? 1 : 0),
+        replays: cur.replays + (kind === "replay" ? 1 : 0),
+        likes:   cur.likes   + (kind === "like"   ? 1 : 0),
+        shares:  cur.shares  + (kind === "share"  ? 1 : 0),
+        lastAt:  now,
+      };
+      return { ...prev, plays: { ...prev.plays, [playId]: updated } };
+    });
+  };
+
+  // Reranker: 80% exploit (by affinity), 10% freshness, 10% explore
+  const rerankFeed = <T extends { id: string; categoryId: string }>(plays: T[]): T[] => {
+    if (plays.length === 0) return plays;
+    // Cold-start: no signals yet → return original order
+    const hasAnyData = Object.keys(affinity.plays).length > 0;
+    if (!hasAnyData) return plays;
+
+    // Score each play: affinity of the play itself + affinity of its category (weight 0.3)
+    const scored = plays.map(p => {
+      const playScore = affinityForPlay(affinity.plays[p.id]);
+      const catScore = affinityForCategory(p.categoryId, affinity) * 0.3;
+      return { play: p, score: playScore + catScore };
+    });
+
+    // Split into exploit (80%), explore (10%), fresh (10%)
+    const total = scored.length;
+    const exploitN = Math.floor(total * 0.8);
+    const freshN = Math.max(1, Math.floor(total * 0.1));
+    const exploreN = total - exploitN - freshN;
+
+    // Exploit: top by score
+    const byScore = [...scored].sort((a, b) => b.score - a.score);
+    const exploit = byScore.slice(0, exploitN).map(x => x.play);
+    const exploitIds = new Set(exploit.map(p => p.id));
+
+    // Fresh: most recent by original order (assuming order is recency)
+    const fresh = plays.filter(p => !exploitIds.has(p.id)).slice(0, freshN);
+    const freshIds = new Set(fresh.map(p => p.id));
+
+    // Explore: random from what's left
+    const remaining = plays.filter(p => !exploitIds.has(p.id) && !freshIds.has(p.id));
+    const explore = shuffle(remaining).slice(0, exploreN);
+
+    // Interleave: sprinkle fresh and explore among exploit
+    const result: T[] = [];
+    const step = Math.max(1, Math.floor(exploitN / (freshN + exploreN + 1)));
+    const surprises = [...fresh, ...explore];
+    let surpriseIdx = 0;
+    exploit.forEach((p, i) => {
+      result.push(p);
+      if ((i + 1) % step === 0 && surpriseIdx < surprises.length) {
+        result.push(surprises[surpriseIdx++]);
+      }
+    });
+    // Append leftovers
+    while (surpriseIdx < surprises.length) result.push(surprises[surpriseIdx++]);
+    return result;
+  };
+
+  const topCategories = () => {
+    const cats = new Set(FEED.map(p => p.categoryId));
+    const scored = [...cats].map(catId => ({
+      catId, score: affinityForCategory(catId, affinity),
+    }));
+    return scored.sort((a, b) => b.score - a.score);
+  };
+
+  // Given a category the user is looking at, suggest similar plays from the
+  // wider FEED that aren't already in their library.
+  // Similarity = plays in categories the user has high affinity for + plays
+  // in categories that co-occur with this one (via parent grouping).
+  const suggestSimilarPlays = <T extends { id: string; categoryId: string }>(
+    inCategoryId: string,
+    excludeIds: Set<string>,
+    plays: T[],
+  ): T[] => {
+    if (plays.length === 0) return [];
+
+    const cat = CATEGORIES.find(c => c.id === inCategoryId);
+    const parentId = cat?.parentId || inCategoryId;
+    const siblingIds = new Set(
+      CATEGORIES.filter(c => c.parentId === parentId).map(c => c.id)
+    );
+
+    const candidates = plays.filter(p => !excludeIds.has(p.id));
+
+    const scored = candidates.map(p => {
+      let score = 0;
+      // Sibling boost: plays in the same top-level group get +2
+      if (siblingIds.has(p.categoryId)) score += 2;
+      // Same category exact match: +3
+      if (p.categoryId === inCategoryId) score += 3;
+      // User affinity for that category: up to +1.5
+      score += affinityForCategory(p.categoryId, affinity) * 0.05;
+      return { play: p, score };
+    });
+
+    return scored
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6)
+      .map(x => x.play);
+  };
+
   // Handle day rollover — if user missed a day, reset streak (unless they have freezes).
   // Runs once on mount.
   useEffect(() => {
@@ -4816,6 +5149,9 @@ export default function App() {
     <LikesCtx.Provider value={{ likedIds, toggleLike }}>
     <ThemeCtx.Provider value={{ isDark, toggleTheme }}>
     <StreakCtx.Provider value={{ streak, recordSave, acknowledgeMilestone }}>
+    <AffinityCtx.Provider value={{
+      affinity, track: trackSignal, rerankFeed, topCategories, suggestSimilarPlays
+    }}>
     <ToastProvider>
     <div style={{
       minHeight:"100vh",
@@ -4874,6 +5210,7 @@ export default function App() {
     )}
 
     </ToastProvider>
+    </AffinityCtx.Provider>
     </StreakCtx.Provider>
     </ThemeCtx.Provider>
     </LikesCtx.Provider>
