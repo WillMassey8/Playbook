@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useContext, createContext } from "react";
+import { useState, useRef, useEffect, useContext, createContext, useMemo } from "react";
 
 // ─── Theme context ────────────────────────────────────────────────────────────
 type ThemeMode = "dark" | "light";
@@ -136,7 +136,7 @@ function affinityForPlay(s: PlaySignals | undefined): number {
 // Aggregate affinity for a category = sum of affinities of plays in it
 function affinityForCategory(catId: string, affinity: AffinityState): number {
   const catIds = descendantIds(catId);
-  return FEED
+  return allPlays()
     .filter(p => catIds.has(p.categoryId))
     .reduce((acc, p) => acc + affinityForPlay(affinity.plays[p.id]), 0);
 }
@@ -348,6 +348,38 @@ const FEED = [
   { id:"p16", categoryId:"12", title:"Jet Sweep – unbalanced line look",    platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/22",  savedAt:null,          liked:false, views: 840, addedAt: new Date("2026-06-01"), gradient:["#2a1a0d","#0d0d0f"] },
 ];
 
+// ─── User-imported plays (persisted to localStorage) ──────────────────────────
+type UserPlayItem = typeof FEED[number];
+const USER_PLAYS_KEY = "playbook.userPlays.v1";
+function loadUserPlays(): UserPlayItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(USER_PLAYS_KEY);
+    if (!raw) return [];
+    // addedAt is serialized as an ISO string — revive it to a Date.
+    return (JSON.parse(raw) as UserPlayItem[]).map(p => ({ ...p, addedAt: new Date(p.addedAt) }));
+  } catch { return []; }
+}
+function saveUserPlays(plays: UserPlayItem[]) {
+  try { localStorage.setItem(USER_PLAYS_KEY, JSON.stringify(plays)); } catch {}
+}
+// Module-level mirror so the FEED-derived helpers below (playsInCat, affinity)
+// see imported plays synchronously, even before React re-renders.
+let USER_PLAYS: UserPlayItem[] = loadUserPlays();
+function syncUserPlays(plays: UserPlayItem[]) { USER_PLAYS = plays; saveUserPlays(plays); }
+// Everything the app shows = imported plays (newest first) + the seeded FEED.
+function allPlays(): UserPlayItem[] { return [...USER_PLAYS, ...FEED]; }
+
+function detectPlatform(url: string): "twitter" | "instagram" {
+  if (/(?:twitter\.com|x\.com)/i.test(url)) return "twitter";
+  return "instagram"; // instagram + any other link uses the open-source card behavior
+}
+
+const PlaysCtx = createContext<{ plays: UserPlayItem[]; addPlay: (p: UserPlayItem) => void }>({
+  plays: FEED, addPlay: () => {},
+});
+function usePlays() { return useContext(PlaysCtx); }
+
 const topLevel = CATEGORIES.filter(c => !c.parentId);
 function children(pid: string) { return CATEGORIES.filter(c => c.parentId === pid); }
 function leafCats() {
@@ -368,7 +400,7 @@ function descendantIds(catId: string): Set<string> {
 }
 function playsInCat(catId: string) {
   const ids = descendantIds(catId);
-  return FEED.filter(p => ids.has(p.categoryId));
+  return allPlays().filter(p => ids.has(p.categoryId));
 }
 
 // ─── Link-based playback (App Store 5.2.3 safe — no re-hosted social video) ───
@@ -1307,11 +1339,16 @@ function FeedScreen() {
   const pulling    = useRef(false);
 
   const { rerankFeed } = useAffinity();
-  // Personalized feed order — computed once on mount so scrolling doesn't shuffle.
-  // Refreshing (pull-to-refresh) re-runs the reranker for a fresh mix.
+  const { plays } = usePlays();
+  // Personalized feed order. Recomputed whenever the play set changes (e.g. a new
+  // link is imported) so imports appear in the feed without a manual refresh.
   const [feedOrder, setFeedOrder] = useState<FeedPlay[]>(() =>
-    rerankFeed(FEED as unknown as FeedPlay[])
+    rerankFeed(plays as unknown as FeedPlay[])
   );
+  useEffect(() => {
+    setFeedOrder(rerankFeed(plays as unknown as FeedPlay[]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plays]);
 
   const THRESHOLD = 64; // px to trigger refresh
 
@@ -1352,7 +1389,7 @@ function FeedScreen() {
       setRefreshing(true);
       setPullY(0);
       // Re-rank feed with fresh randomness on refresh
-      setFeedOrder(rerankFeed(FEED as unknown as FeedPlay[]));
+      setFeedOrder(rerankFeed(plays as unknown as FeedPlay[]));
       setTimeout(() => setRefreshing(false), 1600);
     } else {
       setPullY(0);
@@ -1406,7 +1443,7 @@ function FeedScreen() {
         background:"linear-gradient(rgba(0,0,0,0.5), transparent)" }}>
         {/* Debug tap-to-refresh (mousedown triggers refresh for desktop preview) */}
         <span
-          onMouseDown={() => { setRefreshing(true); setFeedOrder(rerankFeed(FEED as unknown as FeedPlay[])); setTimeout(() => setRefreshing(false), 1600); }}
+          onMouseDown={() => { setRefreshing(true); setFeedOrder(rerankFeed(plays as unknown as FeedPlay[])); setTimeout(() => setRefreshing(false), 1600); }}
           style={{ fontSize:15, fontWeight:600, color:"rgba(255,255,255,0.9)",
             letterSpacing:"-0.01em", cursor:"default", userSelect:"none" }}>
           {refreshing ? "Refreshing…" : "For You"}
@@ -1465,9 +1502,10 @@ function PressRow({ onClick, children, indent = 0 }:
 function PlaybookScreen({ navigate }: { navigate:(s:Screen)=>void }) {
   const { isDark } = useTheme();
   const { likedIds } = useLikes();
+  const { plays } = usePlays();
   const T = th(isDark);
-  const totalClips = FEED.length;
-  const totalSaved = FEED.filter(p => p.savedAt).length;
+  const totalClips = plays.length;
+  const totalSaved = plays.filter(p => p.savedAt).length;
   const likedCount = likedIds.size;
 
   return (
@@ -2601,8 +2639,191 @@ function SettingsGroup({ label, children }:
 type PlanTier = "individual" | "team";
 const TEAM_SEAT_MAX = 6;
 
+// ─── Import a link → categorize → add to feed & playbook ──────────────────────
+function ImportLinkSheet({ onClose, onImported }:
+  { onClose: () => void; onImported: (p: UserPlayItem) => void }) {
+  const { isDark } = useTheme();
+  const T = th(isDark);
+  const [url, setUrl]           = useState("");
+  const [title, setTitle]       = useState("");
+  const [parentId, setParentId] = useState<string>("");
+  const [subId, setSubId]       = useState<string>("");
+  const [done, setDone]         = useState(false);
+
+  const parents    = CATEGORIES.filter(c => c.parentId === null);
+  const subs       = parentId ? CATEGORIES.filter(c => c.parentId === parentId) : [];
+  const selectedId = subs.length > 0 ? subId : parentId;
+  const urlOk      = /^https?:\/\/.+\..+/i.test(url.trim());
+  const canSave    = urlOk && parentId !== "" && (subs.length === 0 || subId !== "");
+
+  const sheetBg   = isDark ? "#111114" : STEEP.white;
+  const handleCol = isDark ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.13)";
+  const inputBg   = isDark ? "rgba(255,255,255,0.06)" : STEEP.fog;
+  const inputBdr  = isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)";
+
+  const fieldStyle: React.CSSProperties = {
+    width:"100%", padding:"13px 16px", borderRadius:12,
+    background: inputBg, border:`1px solid ${inputBdr}`,
+    color: T.text, fontSize:15, fontFamily: STEEP.sans, outline:"none",
+  };
+  const selectStyle: React.CSSProperties = {
+    ...fieldStyle, cursor:"pointer", appearance:"none", WebkitAppearance:"none",
+    backgroundImage:`url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l5 5 5-5' stroke='${isDark ? "%23ffffff66" : "%2377808666"}' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+    backgroundRepeat:"no-repeat", backgroundPosition:"right 14px center",
+  };
+
+  function handleParentChange(val: string) { setParentId(val); setSubId(""); }
+
+  async function pasteFromClipboard() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) setUrl(text.trim());
+    } catch { /* clipboard blocked — user can paste manually into the field */ }
+  }
+
+  function save() {
+    if (!canSave) return;
+    const platform = detectPlatform(url.trim());
+    const catName  = CATEGORIES.find(c => c.id === selectedId)?.name ?? "Playbook";
+    const play: UserPlayItem = {
+      id: `user-${Date.now()}`,
+      categoryId: selectedId,
+      title: title.trim() || `${catName} clip`,
+      platform,
+      sourceUrl: url.trim(),
+      savedAt: catName,
+      liked: false,
+      views: 0,
+      addedAt: new Date(),
+      gradient: ["#1a2440", "#0d0d0f"],
+    };
+    onImported(play);
+    setDone(true);
+    setTimeout(onClose, 1000);
+  }
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position:"absolute", inset:0,
+        background: isDark ? "rgba(0,0,0,0.55)" : "rgba(23,25,28,0.35)",
+        backdropFilter:"blur(4px)", zIndex:40 }} />
+
+      <div style={{ position:"absolute", bottom:0, left:0, right:0, zIndex:41,
+        background: sheetBg, borderRadius:"22px 22px 0 0",
+        boxShadow: isDark ? "0 -4px 32px rgba(0,0,0,0.55)" : "0 -2px 24px rgba(23,25,28,0.10)",
+        padding:"0 0 calc(28px + env(safe-area-inset-bottom))",
+        display:"flex", flexDirection:"column", fontFamily: STEEP.sans,
+        animation:"slideUp .26s cubic-bezier(0.34,1.1,0.64,1)" }}>
+        <style>{`@keyframes slideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
+
+        {/* Handle */}
+        <div style={{ display:"flex", justifyContent:"center", padding:"10px 0 6px" }}>
+          <div style={{ width:32, height:4, borderRadius:99, background: handleCol }} />
+        </div>
+
+        {done ? (
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center",
+            gap:12, padding:"28px 24px 20px" }}>
+            <div style={{ width:52, height:52, borderRadius:"50%",
+              background: isDark ? "rgba(51,214,125,0.16)" : STEEP.apricotWash,
+              display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <svg width="22" height="18" viewBox="0 0 24 20" fill="none">
+                <path d="M2 10l7 7L22 2" stroke={T.accent} strokeWidth="2.5"
+                  strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <div style={{ fontFamily: STEEP.serif, fontSize:18, fontWeight:500, color: T.text }}>
+              Added to your feed
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Header */}
+            <div style={{ padding:"6px 20px 16px", borderBottom:`1px solid ${T.divider}` }}>
+              <div style={{ fontFamily: STEEP.serif, fontSize:18, fontWeight:500,
+                color: T.text, letterSpacing:"-0.01em" }}>Import a link</div>
+              <div style={{ fontSize:13, color: T.textFaint, marginTop:3 }}>
+                Paste an X or Instagram link and file it in your playbook.
+              </div>
+            </div>
+
+            <div style={{ padding:"18px 20px 4px", display:"flex",
+              flexDirection:"column", gap:14 }}>
+              {/* Link */}
+              <div>
+                <div style={{ fontSize:11, fontWeight:600, color: T.textFaint,
+                  letterSpacing:"0.07em", marginBottom:7 }}>LINK</div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <input value={url} onChange={e => setUrl(e.target.value)}
+                    placeholder="https://x.com/…" autoCapitalize="none"
+                    style={{ ...fieldStyle, flex:1, minWidth:0 }} />
+                  <button onClick={pasteFromClipboard}
+                    style={{ padding:"0 14px", borderRadius:12, flexShrink:0,
+                      border:`1px solid ${inputBdr}`, background: inputBg,
+                      color: T.text, fontSize:13, fontWeight:600, cursor:"pointer",
+                      fontFamily: STEEP.sans }}>
+                    Paste
+                  </button>
+                </div>
+              </div>
+
+              {/* Title */}
+              <div>
+                <div style={{ fontSize:11, fontWeight:600, color: T.textFaint,
+                  letterSpacing:"0.07em", marginBottom:7 }}>
+                  TITLE <span style={{ opacity:0.6 }}>(optional)</span>
+                </div>
+                <input value={title} onChange={e => setTitle(e.target.value)}
+                  placeholder="e.g. Mesh concept vs. Cover 3" style={fieldStyle} />
+              </div>
+
+              {/* Category */}
+              <div>
+                <div style={{ fontSize:11, fontWeight:600, color: T.textFaint,
+                  letterSpacing:"0.07em", marginBottom:7 }}>CATEGORY</div>
+                <select value={parentId} onChange={e => handleParentChange(e.target.value)}
+                  style={selectStyle}>
+                  <option value="" disabled>Select a play type…</option>
+                  {parents.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+
+              {/* Sub-category */}
+              {parentId !== "" && subs.length > 0 && (
+                <div>
+                  <div style={{ fontSize:11, fontWeight:600, color: T.textFaint,
+                    letterSpacing:"0.07em", marginBottom:7 }}>SUB-CATEGORY</div>
+                  <select value={subId} onChange={e => setSubId(e.target.value)}
+                    style={selectStyle}>
+                    <option value="" disabled>Select a sub-category…</option>
+                    {subs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Save */}
+            <div style={{ padding:"16px 20px 0" }}>
+              <button onClick={save} disabled={!canSave}
+                style={{ width:"100%", border:"none", borderRadius:14, padding:"15px",
+                  background: canSave ? STEEP.ink : (isDark ? "rgba(255,255,255,0.07)" : STEEP.fog),
+                  color: canSave ? STEEP.white : T.textFaint,
+                  fontWeight:600, fontSize:15, cursor: canSave ? "pointer" : "default",
+                  fontFamily: STEEP.sans }}>
+                Add to Playbook
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
 function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
   const { isDark, toggleTheme } = useTheme();
+  const { addPlay } = usePlays();
+  const [importOpen, setImportOpen] = useState(false);
   const toast = useToast();
   const T = th(isDark);
   const [plan]             = useState<PlanTier>("individual"); // mock — swap to "team" to test
@@ -2739,7 +2960,7 @@ function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
 
           {/* ── Library ───────────────────────────────────────────────────── */}
           <SettingsGroup label="Library">
-            <SettingsRow onPress={() => toast("Sharing & Import coming soon")}
+            <SettingsRow onPress={() => setImportOpen(true)}
               iconBg="rgba(76,217,100,0.18)" label="Sharing & Import"
               iconEl={<svg width="15" height="15" viewBox="0 0 15 15" fill="none">
                 <path d="M7.5 1v9M3 5l4.5-4L12 5" stroke="#4cd964" strokeWidth="1.6"
@@ -2991,6 +3212,10 @@ function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
 
         </div>
       </div>
+
+      {importOpen && (
+        <ImportLinkSheet onClose={() => setImportOpen(false)} onImported={addPlay} />
+      )}
     </div>
   );
 }
@@ -4959,6 +5184,16 @@ export default function App() {
       return next;
     });
 
+  // ── User-imported plays (persisted to localStorage) ───────────────────────
+  const [userPlays, setUserPlays] = useState<UserPlayItem[]>(loadUserPlays);
+  useEffect(() => { syncUserPlays(userPlays); }, [userPlays]);
+  const addPlay = (p: UserPlayItem) => {
+    USER_PLAYS = [p, ...USER_PLAYS];        // keep the module mirror current now
+    setUserPlays(prev => [p, ...prev]);
+  };
+  // Merged, stable list = imports (newest first) + seeded FEED.
+  const allPlaysList = useMemo(() => [...userPlays, ...FEED], [userPlays]);
+
   // ── Streak state (persisted to localStorage) ──────────────────────────────
   const [streak, setStreak] = useState<StreakState>(loadStreak);
   const [pendingMilestone, setPendingMilestone] = useState<number | null>(null);
@@ -5164,6 +5399,7 @@ export default function App() {
     <AffinityCtx.Provider value={{
       affinity, track: trackSignal, rerankFeed, topCategories, suggestSimilarPlays
     }}>
+    <PlaysCtx.Provider value={{ plays: allPlaysList, addPlay }}>
     <ToastProvider>
     <div style={{
       minHeight:"100vh",
@@ -5222,6 +5458,7 @@ export default function App() {
     )}
 
     </ToastProvider>
+    </PlaysCtx.Provider>
     </AffinityCtx.Provider>
     </StreakCtx.Provider>
     </ThemeCtx.Provider>
