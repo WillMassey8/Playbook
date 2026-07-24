@@ -1475,7 +1475,7 @@ function PlaybookScreen({ navigate }: { navigate:(s:Screen)=>void }) {
       background:T.bg }}>
 
       {/* Header */}
-      <div style={{ padding:"28px 20px 16px", flexShrink:0,
+      <div style={{ padding:"calc(28px + env(safe-area-inset-top)) 20px 16px", flexShrink:0,
         borderBottom:`1px solid ${T.divider}` }}>
         <div style={{ fontSize:32, fontWeight:400, color:T.text,
           fontFamily:STEEP.serif,
