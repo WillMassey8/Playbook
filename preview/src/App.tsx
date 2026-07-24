@@ -238,6 +238,9 @@ function th(isDark: boolean) {
     // Glass → flattened cards in light mode
     glassGrad:       d("linear-gradient(160deg,rgba(255,255,255,0.07)0%,rgba(255,255,255,0.02)100%)", STEEP.white),
     glassBT:         d("rgba(255,255,255,0.14)", "transparent"),
+    glassBL:         d("rgba(255,255,255,0.08)", "transparent"),
+    glassBR:         d("rgba(255,255,255,0.08)", "transparent"),
+    glassBB:         d("rgba(255,255,255,0.05)", "transparent"),
     // Tab bar
     tabPill:         d("rgba(14,14,18,0.90)",    STEEP.white),
     tabBorder:       d("rgba(255,255,255,0.12)", `rgba(167,170,175,0.30)`),
@@ -1917,6 +1920,8 @@ function SimilarPlaysCard({ inCategoryId, navigate }:
 
 
 // ─── ALL CLIPS GRID SCREEN ────────────────────────────────────────────────────
+type GridFilter = "recent" | "most-viewed" | "saved";
+
 function GridScreen({ catId, label, navigate }: { catId:string; label:string; navigate:(s:Screen)=>void }) {
   const { isDark } = useTheme();
   const T = th(isDark);
@@ -4299,10 +4304,16 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
 
       {/* Content */}
       <div style={{ flex:1, overflowY:"auto",
+        display:"flex", flexDirection:"column",
         padding: hideTopBar
           ? `0 ${OB_PAD}px 32px`
           : `24px ${OB_PAD}px 32px` }}
         className="hide-scrollbar">
+
+        {/* Vertically center the step within the available space. Auto margins
+            collapse to 0 when a step is taller than the viewport (preview /
+            paywall), so those still scroll normally from the top. */}
+        <div style={{ margin:"auto 0", width:"100%" }}>
 
         {step === "who" && (
           <OnboardingStepShell
@@ -4489,6 +4500,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
             </div>
           </OnboardingStepShell>
         )}
+        </div>
       </div>
 
       {/* Footer CTA */}
@@ -4768,7 +4780,7 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
       </div>
 
       {/* CTA */}
-      <div style={{ padding:"0 28px 48px", display:"flex",
+      <div style={{ padding:"0 28px calc(48px + env(safe-area-inset-bottom))", display:"flex",
         flexDirection:"column", gap:14, textAlign:"center" }}>
 
         <GlowButton label="Get Started" onPress={() => setPhase("onboarding")} />
