@@ -1499,7 +1499,7 @@ function FeedScreen() {
       {/* Header */}
       <div style={{ position:"absolute", top:0, left:0, right:0, zIndex:5,
         display:"flex", justifyContent:"center", alignItems:"center",
-        paddingTop:"calc(12px + env(safe-area-inset-top))", paddingBottom:8,
+        paddingTop:"calc(12px + var(--pb-safe-top, env(safe-area-inset-top)))", paddingBottom:8,
         background:"linear-gradient(rgba(0,0,0,0.5), transparent)" }}>
         {/* Debug tap-to-refresh (mousedown triggers refresh for desktop preview) */}
         <span
@@ -1573,7 +1573,7 @@ function PlaybookScreen({ navigate }: { navigate:(s:Screen)=>void }) {
       background:T.bg }}>
 
       {/* Header */}
-      <div style={{ padding:"calc(28px + env(safe-area-inset-top)) 20px 16px", flexShrink:0,
+      <div style={{ padding:"calc(28px + var(--pb-safe-top, env(safe-area-inset-top))) 20px 16px", flexShrink:0,
         borderBottom:`1px solid ${T.divider}` }}>
         <div style={{ fontSize:32, fontWeight:400, color:T.text,
           fontFamily:STEEP.serif,
@@ -1741,7 +1741,7 @@ function CategoryScreen({ catId, navigate, from }: { catId:string; navigate:(s:S
     <div style={{ display:"flex", flexDirection:"column", height:"100%", background:T.bg }}>
 
       {/* Back nav */}
-      <div style={{ padding:"calc(14px + env(safe-area-inset-top)) 20px 0", flexShrink:0 }}>
+      <div style={{ padding:"calc(14px + var(--pb-safe-top, env(safe-area-inset-top))) 20px 0", flexShrink:0 }}>
         <button onClick={() => navigate({ id:"playbook" })}
           style={{ background:"none", border:"none", cursor:"pointer",
             padding:"4px 0 14px", display:"flex", alignItems:"center",
@@ -1904,7 +1904,7 @@ function CategoryScreen({ catId, navigate, from }: { catId:string; navigate:(s:S
 
         {kids.length === 0 && direct.length === 0 && (
           <div style={{ padding:"56px 20px", textAlign:"center",
-            color:"rgba(255,255,255,0.22)", fontSize:13 }}>
+            color:T.textFaint, fontSize:13 }}>
             No clips in {cat.name} yet
           </div>
         )}
@@ -2056,7 +2056,7 @@ function GridScreen({ catId, label, navigate }: { catId:string; label:string; na
     <div style={{ display:"flex", flexDirection:"column", height:"100%", background:T.bg }}>
 
       {/* Header */}
-      <div style={{ padding:"calc(14px + env(safe-area-inset-top)) 20px 0", flexShrink:0 }}>
+      <div style={{ padding:"calc(14px + var(--pb-safe-top, env(safe-area-inset-top))) 20px 0", flexShrink:0 }}>
         <button onClick={goBack}
           style={{ background:"none", border:"none", cursor:"pointer",
             padding:"4px 0 12px", display:"flex", alignItems:"center",
@@ -2123,7 +2123,7 @@ function GridScreen({ catId, label, navigate }: { catId:string; label:string; na
       <div style={{ flex:1, overflowY:"auto" }}>
         {sorted.length === 0 ? (
           <div style={{ padding:"56px 20px", textAlign:"center",
-            color:"rgba(255,255,255,0.22)", fontSize:13 }}>
+            color:T.textFaint, fontSize:13 }}>
             No clips in {label} yet
           </div>
         ) : (
@@ -2190,14 +2190,34 @@ function GridScreen({ catId, label, navigate }: { catId:string; label:string; na
 // ─── SINGLE CLIP PLAYER SCREEN ────────────────────────────────────────────────
 function ClipPlayerScreen({ playId, from, navigate }:
   { playId:string; from:Screen; navigate:(s:Screen)=>void }) {
-  const play = FEED.find(p => p.id === playId) as FeedPlay | undefined;
+  const { isDark } = useTheme();
+  const T = th(isDark);
+  // Imported plays live alongside the seeded ones, so look through both.
+  const { plays } = usePlays();
+  const play = plays.find(p => p.id === playId) as FeedPlay | undefined;
   const videoRef = useRef<HTMLVideoElement>(null);
   const [paused, setPaused] = useState(false);
   const streamUrl = usePlaybackStream(play, true);
   const userVideo = play?.videoStoragePath;
   const playbackSrc = userVideo || streamUrl;
 
-  if (!play) return null;
+  if (!play) {
+    return (
+      <div style={{ width:"100%", height:"100%", background:T.bg,
+        display:"flex", flexDirection:"column", alignItems:"center",
+        justifyContent:"center", gap:14, padding:24 }}>
+        <div style={{ fontSize:14, color:T.textSec, textAlign:"center" }}>
+          This clip is no longer in your playbook.
+        </div>
+        <button onClick={() => navigate(from ?? { id:"playbook" })}
+          style={{ border:"none", borderRadius:12, padding:"11px 22px",
+            background:STEEP.ink, color:STEEP.white, fontSize:14,
+            fontWeight:600, cursor:"pointer", fontFamily:STEEP.sans }}>
+          Back to Playbook
+        </button>
+      </div>
+    );
+  }
   const cat = CATEGORIES.find(c => c.id === play.categoryId);
   const parent = cat?.parentId ? CATEGORIES.find(c => c.id === cat!.parentId) : null;
 
@@ -2228,7 +2248,7 @@ function ClipPlayerScreen({ playId, from, navigate }:
 
       {/* Back button */}
       <button onClick={e => { e.stopPropagation(); navigate(from); }}
-        style={{ position:"absolute", top:"calc(14px + env(safe-area-inset-top))", left:14, zIndex:10,
+        style={{ position:"absolute", top:"calc(14px + var(--pb-safe-top, env(safe-area-inset-top)))", left:14, zIndex:10,
           background:"rgba(0,0,0,0.45)", backdropFilter:"blur(12px)",
           border:"1px solid rgba(255,255,255,0.15)", borderRadius:999,
           padding:"8px 14px 8px 10px",
@@ -2544,7 +2564,7 @@ function LikedScreen({ navigate }: { navigate:(s:Screen)=>void }) {
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100%", background:T.bg }}>
-      <div style={{ padding:"calc(14px + env(safe-area-inset-top)) 20px 0", flexShrink:0 }}>
+      <div style={{ padding:"calc(14px + var(--pb-safe-top, env(safe-area-inset-top))) 20px 0", flexShrink:0 }}>
         <button onClick={() => navigate({ id:"playbook" })}
           style={{ background:"none", border:"none", cursor:"pointer",
             padding:"4px 0 12px", display:"flex", alignItems:"center",
@@ -2817,7 +2837,7 @@ function ImportLinkSheet({ onClose, onImported }:
         {/* Scrollable body so the sheet always fits the screen */}
         <div style={{ overflowY:"auto",
           WebkitOverflowScrolling:"touch" as any,
-          paddingBottom:"calc(28px + env(safe-area-inset-bottom))" }}>
+          paddingBottom:"calc(28px + var(--pb-safe-bottom, env(safe-area-inset-bottom)))" }}>
 
         {/* ── Step: paste the link ─────────────────────────────────────── */}
         {step === "paste" && (
@@ -3586,7 +3606,7 @@ function StreakBadge() {
   if (streak.count === 0) return null;
   return (
     <div style={{
-      position:"absolute", top:"calc(16px + env(safe-area-inset-top))", right:16, zIndex:6,
+      position:"absolute", top:"calc(16px + var(--pb-safe-top, env(safe-area-inset-top)))", right:16, zIndex:6,
       display:"flex", alignItems:"center", gap:5,
       padding:"6px 10px", borderRadius:99,
       background:"rgba(0,0,0,0.35)",
@@ -4667,7 +4687,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
       {/* Top bar */}
       {!hideTopBar && (
         <div style={{ flexShrink:0,
-          padding:"calc(12px + env(safe-area-inset-top)) 20px 0",
+          padding:"calc(12px + var(--pb-safe-top, env(safe-area-inset-top))) 20px 0",
           display:"flex", alignItems:"center", justifyContent:"space-between" }}>
           <button type="button" onClick={goBack} aria-label="Back"
             style={{ background:"none", border:"none", cursor:"pointer",
@@ -4899,7 +4919,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
       {/* Footer CTA */}
       {!hideTopBar && (
         <div style={{ flexShrink:0,
-          padding:`16px ${OB_PAD}px calc(24px + env(safe-area-inset-bottom))`,
+          padding:`16px ${OB_PAD}px calc(24px + var(--pb-safe-bottom, env(safe-area-inset-bottom)))`,
           borderTop:`1px solid rgba(167,170,175,0.18)`,
           background: STEEP.white }}>
           <GlowButton label={continueLabel} onPress={goNext} disabled={!canContinue} />
@@ -5100,7 +5120,7 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
       }}>
         <button onClick={() => setPhase("onboarding")}
           style={{ background:"none", border:"none", cursor:"pointer",
-            padding:"calc(18px + env(safe-area-inset-top)) 20px 8px", display:"flex", alignItems:"center",
+            padding:"calc(18px + var(--pb-safe-top, env(safe-area-inset-top))) 20px 8px", display:"flex", alignItems:"center",
             gap:6, color:STEEP.graphite, fontSize:13, alignSelf:"flex-start" }}>
           <svg width="6" height="10" viewBox="0 0 6 10" fill="none">
             <path d="M5 1L1 5l4 4" stroke="currentColor" strokeWidth="1.5"
@@ -5173,7 +5193,7 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
       </div>
 
       {/* CTA */}
-      <div style={{ padding:"0 28px calc(48px + env(safe-area-inset-bottom))", display:"flex",
+      <div style={{ padding:"0 28px calc(48px + var(--pb-safe-bottom, env(safe-area-inset-bottom)))", display:"flex",
         flexDirection:"column", gap:14, textAlign:"center" }}>
 
         <GlowButton label="Get Started" onPress={() => setPhase("onboarding")} />
