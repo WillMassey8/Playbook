@@ -422,6 +422,40 @@ const PREVIEW_LOCAL_STREAM: Record<string, string> = {
   "2069095673417318780": "/play-2069095673417318780.mp4",
 };
 
+/**
+ * Token the public syndication endpoint derives from the post id — the same
+ * algorithm X's own embed script uses. A placeholder value is rejected for
+ * some posts, so compute it properly.
+ */
+function syndicationToken(id: string): string {
+  return ((Number(id) / 1e15) * Math.PI).toString(36).replace(/(0+|\.)/g, "");
+}
+
+/**
+ * Pick the most compatible mp4 rather than the largest one. The 1080p variant
+ * is often a High-profile stream that some browsers refuse, and it buffers
+ * slowly on mobile, so prefer the best variant up to ~720p.
+ */
+function pickMp4Variant(variants: Array<Record<string, unknown>>): string | null {
+  const mp4s = variants
+    .filter(v => typeof v.url === "string" && (v.content_type === "video/mp4" || !v.content_type))
+    .map(v => ({ url: v.url as string, bitrate: (v.bitrate as number) ?? 0 }))
+    .sort((a, b) => b.bitrate - a.bitrate);
+  if (mp4s.length === 0) return null;
+  const compatible = mp4s.find(v => v.bitrate > 0 && v.bitrate <= 2_500_000);
+  return (compatible ?? mp4s[0]).url;
+}
+
+/**
+ * X's CDN refuses `<video>` playback from any other origin, so the stream is
+ * relayed through our own origin. Dev uses the Vite middleware, production the
+ * /api/video edge function.
+ */
+function throughVideoProxy(url: string): string {
+  const base = import.meta.env.DEV ? "/tw-video" : "/api/video";
+  return `${base}?url=${encodeURIComponent(url)}`;
+}
+
 /** Resolve a temporary X stream URL for playback (not stored). */
 async function resolveTwitterStream(sourceUrl: string): Promise<string | null> {
   const id = extractTweetId(sourceUrl);
@@ -430,10 +464,12 @@ async function resolveTwitterStream(sourceUrl: string): Promise<string | null> {
   try {
     // Dev uses the Vite proxy; production uses the /api/tweet edge function.
     const endpoint = import.meta.env.DEV
-      ? `/tw-syndication/tweet-result?id=${id}&lang=en&token=0`
+      ? `/tw-syndication/tweet-result?id=${id}&lang=en&token=${syndicationToken(id)}`
       : `/api/tweet?id=${id}`;
     const res = await fetch(endpoint);
     if (!res.ok) return null;
+    // A missing /api/tweet route answers with the SPA shell, so only trust JSON.
+    if (!/\bjson\b/i.test(res.headers.get("content-type") ?? "")) return null;
     const payload = await res.json();
     const mediaDetails: Array<Record<string, unknown>> = payload?.mediaDetails ?? [];
     for (const media of mediaDetails) {
@@ -441,11 +477,8 @@ async function resolveTwitterStream(sourceUrl: string): Promise<string | null> {
       if (type !== "video" && type !== "animated_gif") continue;
       const variants = (media.video_info as { variants?: Array<Record<string, unknown>> })
         ?.variants ?? [];
-      const mp4 = variants
-        .filter(v => typeof v.url === "string" && (v.content_type === "video/mp4" || !v.content_type))
-        .map(v => ({ url: v.url as string, bitrate: (v.bitrate as number) ?? 0 }))
-        .sort((a, b) => b.bitrate - a.bitrate);
-      if (mp4[0]?.url) return mp4[0].url;
+      const url = pickMp4Variant(variants);
+      if (url) return throughVideoProxy(url);
     }
   } catch { /* syndication unavailable */ }
   return null;
