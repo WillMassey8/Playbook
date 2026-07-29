@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: true,
-    port: 5173,
+    port: 5174,
     strictPort: true,
     proxy: {
       // Dev-only: resolve X syndication without CORS (playback URL only — not stored)
