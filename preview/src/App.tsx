@@ -5527,7 +5527,7 @@ export default function App() {
     }}>
     <PlaysCtx.Provider value={{ plays: allPlaysList, addPlay }}>
     <ToastProvider>
-    <IPhoneSimulator lightStatusBar={isDark}>
+    <IPhoneSimulator lightStatusBar={isDark || screen.id === "feed" || screen.id === "clip"}>
       <PhoneFrame>
         <div style={{
           flex:1, overflow:"hidden", display:"flex", flexDirection:"column",
