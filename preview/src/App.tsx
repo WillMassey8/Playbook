@@ -2874,6 +2874,33 @@ function SettingsGroup({ label, children }:
 type PlanTier = "individual" | "team";
 const TEAM_SEAT_MAX = 6;
 
+/** Selectable pill, matching the category chips in the share extension. */
+function Chip({ label, color, active, onClick }: {
+  label: string; color: string; active: boolean; onClick: () => void;
+}) {
+  const { isDark } = useTheme();
+  const T = th(isDark);
+  return (
+    <button onClick={onClick}
+      style={{
+        background: active ? color : (isDark ? "rgba(255,255,255,0.06)" : STEEP.fog),
+        border: `1px solid ${active ? color : (isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.07)")}`,
+        borderRadius: 999,
+        padding: "8px 15px",
+        cursor: "pointer",
+        fontSize: 14,
+        fontWeight: active ? 600 : 400,
+        color: active ? STEEP.white : T.textSec,
+        letterSpacing: "-0.008em",
+        fontFamily: STEEP.sans,
+        transition: "all .15s ease",
+        boxShadow: active ? STEEP.cardShadow : "none",
+      }}>
+      {label}
+    </button>
+  );
+}
+
 // ─── Import a link → categorize → add to feed & playbook ──────────────────────
 function ImportLinkSheet({ onClose, onImported }:
   { onClose: () => void; onImported: (p: UserPlayItem) => void }) {
@@ -3104,23 +3131,37 @@ function ImportLinkSheet({ onClose, onImported }:
               {/* Q2 — category */}
               <div>
                 <div style={labelStyle}>2 · CATEGORY</div>
-                <select value={parentId} onChange={e => handleParentChange(e.target.value)}
-                  style={selectStyle}>
-                  <option value="" disabled>Select a play type…</option>
-                  {parents.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                  {parents.map(p => (
+                    <Chip key={p.id}
+                      label={p.name}
+                      color={catColor(p.id)}
+                      active={parentId === p.id}
+                      onClick={() => handleParentChange(parentId === p.id ? "" : p.id)}
+                    />
+                  ))}
+                </div>
               </div>
               {/* Q3 — sub-category (when the category has one) */}
               {parentId !== "" && subs.length > 0 && (
                 <div>
                   <div style={labelStyle}>3 · SUB-CATEGORY <span style={{ opacity:0.6 }}>(optional)</span></div>
-                  <select value={subId} onChange={e => setSubId(e.target.value)}
-                    style={selectStyle}>
-                    <option value="">
-                      File under {parents.find(p => p.id === parentId)?.name}
-                    </option>
-                    {subs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                    <Chip
+                      label={`All ${parents.find(p => p.id === parentId)?.name}`}
+                      color={catColor(parentId)}
+                      active={subId === ""}
+                      onClick={() => setSubId("")}
+                    />
+                    {subs.map(s => (
+                      <Chip key={s.id}
+                        label={s.name}
+                        color={catColor(parentId)}
+                        active={subId === s.id}
+                        onClick={() => setSubId(subId === s.id ? "" : s.id)}
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
