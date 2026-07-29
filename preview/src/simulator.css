@@ -1,0 +1,297 @@
+/* ── Xcode-like iOS Simulator desk ───────────────────────────────────────── */
+
+.sim-desk {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(1200px 700px at 50% -10%, #2a2d33 0%, transparent 55%),
+    linear-gradient(180deg, #1c1e22 0%, #121316 100%);
+  color: rgba(255, 255, 255, 0.88);
+  font-family:
+    "SF Pro Text",
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  overflow: hidden;
+}
+
+.sim-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(18, 19, 22, 0.85);
+  backdrop-filter: blur(12px);
+  z-index: 2;
+}
+
+.sim-toolbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.sim-toolbar-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #33d67d;
+  box-shadow: 0 0 0 3px rgba(51, 214, 125, 0.18);
+}
+
+.sim-live {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #33d67d;
+  background: rgba(51, 214, 125, 0.12);
+  padding: 3px 7px;
+  border-radius: 4px;
+}
+
+.sim-device-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.sim-device-picker-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.sim-device-picker select {
+  appearance: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 7px 28px 7px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23aaa' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.sim-device-picker select:focus {
+  outline: none;
+  border-color: rgba(51, 214, 125, 0.45);
+}
+
+.sim-toolbar-meta {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.32);
+  white-space: nowrap;
+}
+
+.sim-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 20px 16px 28px;
+  min-height: 0;
+}
+
+.sim-scale-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.sim-device {
+  position: relative;
+  background: #0a0a0b;
+  box-shadow:
+    0 0 0 1px #2a2a2e,
+    0 0 0 3px #111114,
+    0 28px 80px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.sim-screen {
+  position: absolute;
+  inset: 12px;
+  overflow: hidden;
+  background: #000;
+  isolation: isolate;
+}
+
+.sim-chrome-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 54px;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.sim-status-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 54px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 0 28px 12px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  z-index: 2;
+}
+
+.sim-status-time {
+  min-width: 54px;
+}
+
+.sim-status-trailing {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sim-dynamic-island {
+  position: absolute;
+  top: 11px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 126px;
+  height: 37px;
+  background: #000;
+  border-radius: 24px;
+  z-index: 3;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.sim-notch {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 160px;
+  height: 34px;
+  background: #000;
+  border-radius: 0 0 22px 22px;
+  z-index: 3;
+}
+
+.sim-app {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.sim-home-indicator {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  width: 134px;
+  height: 5px;
+  border-radius: 100px;
+  background: rgba(255, 255, 255, 0.55);
+  z-index: 40;
+  pointer-events: none;
+  mix-blend-mode: difference;
+}
+
+/* Physical side buttons (Xcode-ish) */
+.sim-btn {
+  position: absolute;
+  background: #1a1a1e;
+  border: 1px solid #2c2c30;
+  z-index: 0;
+}
+
+.sim-btn-silent {
+  left: -3px;
+  top: 100px;
+  width: 3px;
+  height: 32px;
+  border-radius: 2px 0 0 2px;
+}
+
+.sim-btn-vol-up {
+  left: -3px;
+  top: 148px;
+  width: 3px;
+  height: 58px;
+  border-radius: 2px 0 0 2px;
+}
+
+.sim-btn-vol-down {
+  left: -3px;
+  top: 216px;
+  width: 3px;
+  height: 58px;
+  border-radius: 2px 0 0 2px;
+}
+
+.sim-btn-power {
+  right: -3px;
+  top: 180px;
+  width: 3px;
+  height: 90px;
+  border-radius: 0 2px 2px 0;
+}
+
+.sim-caption {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.28);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.sim-caption code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+@media (max-width: 720px) {
+  .sim-toolbar {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .sim-device-picker {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .sim-device-picker select {
+    flex: 1;
+  }
+
+  .sim-toolbar-meta {
+    display: none;
+  }
+}

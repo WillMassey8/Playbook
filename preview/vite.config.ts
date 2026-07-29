@@ -5,6 +5,9 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: true,
+    port: 5173,
+    strictPort: true,
     proxy: {
       // Dev-only: resolve X syndication without CORS (playback URL only — not stored)
       '/tw-syndication': {

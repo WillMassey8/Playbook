@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useContext, createContext, useMemo } from "react";
+import IPhoneSimulator from "./IPhoneSimulator";
 
 // ─── Theme context ────────────────────────────────────────────────────────────
 type ThemeMode = "dark" | "light";
@@ -5276,14 +5277,14 @@ function TabBar({ active, onTab }: { active:string; onTab:(t:string)=>void }) {
 }
 
 // ─── PHONE FRAME ─────────────────────────────────────────────────────────────
-// Always fullscreen — no preview frame anywhere.
+// Renders inside the Xcode-style iPhone simulator screen bounds.
 function PhoneFrame({ children }: { children:React.ReactNode }) {
   const { isDark } = useTheme();
   const appBg = isDark ? C.bg : "#f2f2f7";
   return (
-    <div style={{ width:"100vw", height:"100vh", overflow:"hidden",
+    <div style={{ width:"100%", height:"100%", overflow:"hidden",
       display:"flex", flexDirection:"column", background:appBg,
-      position:"fixed", top:0, left:0 }}>
+      position:"relative" }}>
       {children}
     </div>
   );
@@ -5526,18 +5527,13 @@ export default function App() {
     }}>
     <PlaysCtx.Provider value={{ plays: allPlaysList, addPlay }}>
     <ToastProvider>
-    <div style={{
-      minHeight:"100vh",
-      display:"flex", flexDirection:"column",
-      alignItems:"stretch", justifyContent:"flex-start",
-      background: isDark ? C.bg : "#f2f2f7",
-      padding: 0, gap: 0,
-      fontFamily: STEEP.sans, WebkitFontSmoothing:"antialiased",
-      color: isDark ? "#fff" : STEEP.ink,
-    }}>
-
+    <IPhoneSimulator lightStatusBar={isDark}>
       <PhoneFrame>
-        <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
+        <div style={{
+          flex:1, overflow:"hidden", display:"flex", flexDirection:"column",
+          fontFamily: STEEP.sans, WebkitFontSmoothing:"antialiased",
+          color: isDark ? "#fff" : STEEP.ink,
+        }}>
           {!authed
             ? <AuthScreen onDone={() => { setAuthed(true); setScreen({ id:"feed" }); }} />
             : <>
@@ -5568,12 +5564,7 @@ export default function App() {
           }
         </div>
       </PhoneFrame>
-
-      <div style={{ fontSize:11, color:"rgba(255,255,255,.2)", textAlign:"center", lineHeight:2 }}>
-        Scroll up/down on the feed to swipe clips · Tap "Add to Playbook" to categorize<br/>
-        Browse saved clips in the Playbook tab · Toggle theme in Profile → Appearance
-      </div>
-    </div>
+    </IPhoneSimulator>
     {/* Streak milestone celebration modal (shown when 7/30/100/365 hit) */}
     {pendingMilestone && (
       <MilestoneModal
