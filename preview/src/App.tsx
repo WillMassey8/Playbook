@@ -456,11 +456,45 @@ function throughVideoProxy(url: string): string {
   return `${base}?url=${encodeURIComponent(url)}`;
 }
 
-/** Resolve a temporary X stream URL for playback (not stored). */
-async function resolveTwitterStream(sourceUrl: string): Promise<string | null> {
-  const id = extractTweetId(sourceUrl);
+// Resolved stream URLs, kept for the session so swiping back to a clip never
+// pays the syndication round-trip twice. In-flight lookups are shared too, so
+// preloading a neighbour and then landing on it makes a single request.
+const streamCache = new Map<string, string | null>();
+const streamInFlight = new Map<string, Promise<string | null>>();
+
+/** Already-known stream URL for a play, or null if it still needs resolving. */
+function cachedStream(play: FeedPlay | null | undefined): string | null {
+  if (!play) return null;
+  if (play.videoStoragePath) return play.videoStoragePath;
+  if (play.platform !== "twitter") return null;
+  const id = extractTweetId(play.sourceUrl);
   if (!id) return null;
-  if (PREVIEW_LOCAL_STREAM[id]) return PREVIEW_LOCAL_STREAM[id];
+  return PREVIEW_LOCAL_STREAM[id] ?? streamCache.get(id) ?? null;
+}
+
+/** Resolve a temporary X stream URL for playback (not stored). */
+function resolveTwitterStream(sourceUrl: string): Promise<string | null> {
+  const id = extractTweetId(sourceUrl);
+  if (!id) return Promise.resolve(null);
+  if (PREVIEW_LOCAL_STREAM[id]) return Promise.resolve(PREVIEW_LOCAL_STREAM[id]);
+  if (streamCache.has(id)) return Promise.resolve(streamCache.get(id)!);
+
+  const pending = streamInFlight.get(id);
+  if (pending) return pending;
+
+  const lookup = fetchTwitterStream(id).then(url => {
+    streamCache.set(id, url);
+    streamInFlight.delete(id);
+    return url;
+  }, () => {
+    streamInFlight.delete(id);
+    return null;
+  });
+  streamInFlight.set(id, lookup);
+  return lookup;
+}
+
+async function fetchTwitterStream(id: string): Promise<string | null> {
   try {
     // Dev uses the Vite proxy; production uses the /api/tweet edge function.
     const endpoint = import.meta.env.DEV
@@ -484,12 +518,23 @@ async function resolveTwitterStream(sourceUrl: string): Promise<string | null> {
   return null;
 }
 
-/** Hook: resolve + cache stream URL when a feed card becomes active. */
-function usePlaybackStream(play: FeedPlay | null | undefined, isActive: boolean) {
-  const [streamUrl, setStreamUrl] = useState<string | null>(null);
+/**
+ * Resolve a stream URL for a card. `warm` covers the clips just off-screen so
+ * the next swipe plays immediately instead of waiting on a lookup. A cached
+ * result is returned synchronously, which keeps the spinner from flashing.
+ */
+function usePlaybackStream(
+  play: FeedPlay | null | undefined,
+  isActive: boolean,
+  warm = false,
+) {
+  const [streamUrl, setStreamUrl] = useState<string | null>(() => cachedStream(play));
+  const wanted = isActive || warm;
 
   useEffect(() => {
-    if (!play || !isActive || play.platform !== "twitter") {
+    const known = cachedStream(play);
+    if (known) { setStreamUrl(known); return; }
+    if (!play || !wanted || play.platform !== "twitter") {
       setStreamUrl(null);
       return;
     }
@@ -498,14 +543,15 @@ function usePlaybackStream(play: FeedPlay | null | undefined, isActive: boolean)
       if (!cancelled) setStreamUrl(url);
     });
     return () => { cancelled = true; };
-  }, [isActive, play?.platform, play?.sourceUrl]);
+  }, [wanted, play, play?.platform, play?.sourceUrl]);
 
   return streamUrl;
 }
 
-function NativeClipVideo({ src, isActive, paused, videoRef }: {
+function NativeClipVideo({ src, isActive, paused, videoRef, warm = false }: {
   src: string; isActive: boolean; paused: boolean;
   videoRef: React.RefObject<HTMLVideoElement | null>;
+  warm?: boolean;
 }) {
   useEffect(() => {
     const v = videoRef.current;
@@ -514,13 +560,17 @@ function NativeClipVideo({ src, isActive, paused, videoRef }: {
     else v.pause();
   }, [isActive, paused, src, videoRef]);
 
-  if (!isActive) return null;
+  // Off-screen neighbours stay mounted so their first frames are already
+  // decoded by the time they scroll into view.
+  if (!isActive && !warm) return null;
 
   return (
     <video
       ref={videoRef}
       src={src}
-      loop muted playsInline autoPlay
+      loop muted playsInline
+      autoPlay={isActive}
+      preload="auto"
       style={{
         position:"absolute", inset:0, width:"100%", height:"100%",
         objectFit:"contain", objectPosition:"center", background:"#000",
@@ -1077,8 +1127,8 @@ function ClipShareSheet({ play, onClose }: { play: typeof FEED[0]; onClose: () =
 }
 
 // ─── Single full-screen feed card ─────────────────────────────────────────────
-function FeedCard({ play, isActive }:
-  { play:typeof FEED[0]; isActive:boolean }) {
+function FeedCard({ play, isActive, warm = false }:
+  { play:typeof FEED[0]; isActive:boolean; warm?:boolean }) {
   const [showSheet, setShowSheet]       = useState(false);
   const [showShareSheet, setShowShareSheet] = useState(false);
   const [savedTo, setSavedTo]           = useState<string|null>(play.savedAt);
@@ -1130,7 +1180,7 @@ function FeedCard({ play, isActive }:
   }
 
   const userVideo  = (play as FeedPlay).videoStoragePath;
-  const streamUrl  = usePlaybackStream(play as FeedPlay, isActive);
+  const streamUrl  = usePlaybackStream(play as FeedPlay, isActive, warm);
   const playbackSrc = userVideo || streamUrl;
 
   // If an X clip can't resolve a playable stream (e.g. in production, where the
@@ -1161,6 +1211,7 @@ function FeedCard({ play, isActive }:
           isActive={isActive}
           paused={paused}
           videoRef={videoRef}
+          warm={warm}
         />
       )}
 
@@ -1530,7 +1581,8 @@ function FeedScreen() {
         {feedOrder.map((play, i) => (
           <div key={play.id} style={{ height:"100%", scrollSnapAlign:"start",
             scrollSnapStop:"always", flexShrink:0 }}>
-            <FeedCard play={play} isActive={activeIdx === i} />
+            <FeedCard play={play} isActive={activeIdx === i}
+              warm={i > activeIdx && i <= activeIdx + 2} />
           </div>
         ))}
       </div>
@@ -2189,11 +2241,12 @@ function GridScreen({ catId, label, navigate }: { catId:string; label:string; na
 
 // ─── SINGLE CLIP PLAYER SCREEN ────────────────────────────────────────────────
 /** One full-screen page of the clip pager. */
-function ClipPage({ play, isActive, paused, onTogglePause }: {
-  play: FeedPlay; isActive: boolean; paused: boolean; onTogglePause: () => void;
+function ClipPage({ play, isActive, warm = false, paused, onTogglePause }: {
+  play: FeedPlay; isActive: boolean; warm?: boolean;
+  paused: boolean; onTogglePause: () => void;
 }) {
   const videoRef  = useRef<HTMLVideoElement>(null);
-  const streamUrl = usePlaybackStream(play, isActive);
+  const streamUrl = usePlaybackStream(play, isActive, warm);
   const playbackSrc = play.videoStoragePath || streamUrl;
 
   const cat    = CATEGORIES.find(c => c.id === play.categoryId);
@@ -2207,7 +2260,7 @@ function ClipPage({ play, isActive, paused, onTogglePause }: {
       <PlayMediaBackdrop play={play} />
       {playbackSrc && (
         <NativeClipVideo src={playbackSrc} isActive={isActive}
-          paused={paused} videoRef={videoRef} />
+          paused={paused} videoRef={videoRef} warm={warm} />
       )}
 
       {/* Resolving the stream */}
@@ -2347,6 +2400,7 @@ function ClipPlayerScreen({ playId, from, navigate }:
             <ClipPage
               play={p}
               isActive={i === activeIdx}
+              warm={i > activeIdx && i <= activeIdx + 2}
               paused={paused}
               onTogglePause={() => setPaused(v => !v)}
             />
