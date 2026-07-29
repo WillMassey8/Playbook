@@ -1094,12 +1094,25 @@ function FeedCard({ play, isActive }:
   const userVideo  = (play as FeedPlay).videoStoragePath;
   const streamUrl  = usePlaybackStream(play as FeedPlay, isActive);
   const playbackSrc = userVideo || streamUrl;
-  const canPlay    = !!playbackSrc || play.platform === "twitter";
+
+  // If an X clip can't resolve a playable stream (e.g. in production, where the
+  // dev-only syndication proxy isn't available), fall back after a moment to a
+  // tappable "open in source" card instead of spinning forever.
+  const [streamTimedOut, setStreamTimedOut] = useState(false);
+  useEffect(() => {
+    setStreamTimedOut(false);
+    if (!isActive || play.platform !== "twitter" || playbackSrc) return;
+    const t = setTimeout(() => setStreamTimedOut(true), 3500);
+    return () => clearTimeout(t);
+  }, [isActive, play.platform, playbackSrc]);
+
+  const showOpenCard = !playbackSrc && (play.platform !== "twitter" || streamTimedOut);
+  const openSource = () => { if (play.sourceUrl) window.open(play.sourceUrl, "_blank"); };
 
   return (
     <div style={{ width:"100%", height:"100%", position:"relative",
       overflow:"hidden" }}
-      onClick={playbackSrc ? handleTap : undefined}>
+      onClick={playbackSrc ? handleTap : (showOpenCard ? openSource : undefined)}>
 
       <PlayMediaBackdrop play={play as FeedPlay} />
 
@@ -1114,7 +1127,7 @@ function FeedCard({ play, isActive }:
       )}
 
       {/* Loading stream */}
-      {isActive && play.platform === "twitter" && !playbackSrc && (
+      {isActive && play.platform === "twitter" && !playbackSrc && !streamTimedOut && (
         <div style={{ position:"absolute", inset:0, display:"flex",
           alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
           <div style={{ width:28, height:28, borderRadius:"50%",
@@ -1146,9 +1159,10 @@ function FeedCard({ play, isActive }:
         </div>
       )}
 
-      {/* Instagram / link-only — open source */}
-      {!playbackSrc && play.platform !== "twitter" && (
+      {/* Link-only (Instagram, or X when no stream) — tap to open the source */}
+      {showOpenCard && (
         <div style={{ position:"absolute", inset:0, display:"flex",
+          flexDirection:"column", gap:14,
           alignItems:"center", justifyContent:"center",
           opacity: isActive ? 1 : 0.3,
           transform: isActive ? "scale(1)" : "scale(0.9)",
@@ -1162,6 +1176,10 @@ function FeedCard({ play, isActive }:
             <svg width="20" height="22" viewBox="0 0 20 22" fill="white" style={{ marginLeft:2 }}>
               <path d="M2 2l16 9L2 20V2z"/>
             </svg>
+          </div>
+          <div style={{ fontSize:13, fontWeight:600, color:"rgba(255,255,255,0.9)",
+            letterSpacing:"-0.01em" }}>
+            {play.platform === "twitter" ? "Open on X" : "Open in Instagram"}
           </div>
         </div>
       )}
@@ -1340,13 +1358,17 @@ function FeedScreen() {
 
   const { rerankFeed } = useAffinity();
   const { plays } = usePlays();
-  // Personalized feed order. Recomputed whenever the play set changes (e.g. a new
-  // link is imported) so imports appear in the feed without a manual refresh.
-  const [feedOrder, setFeedOrder] = useState<FeedPlay[]>(() =>
-    rerankFeed(plays as unknown as FeedPlay[])
-  );
+  // Personalized order, but always surface freshly-imported clips first so a
+  // just-added link is immediately visible at the top of the feed.
+  const buildOrder = () => {
+    const ranked = rerankFeed(plays as unknown as FeedPlay[]);
+    const mine = ranked.filter(p => p.id.startsWith("user-"));
+    const rest = ranked.filter(p => !p.id.startsWith("user-"));
+    return [...mine, ...rest];
+  };
+  const [feedOrder, setFeedOrder] = useState<FeedPlay[]>(buildOrder);
   useEffect(() => {
-    setFeedOrder(rerankFeed(plays as unknown as FeedPlay[]));
+    setFeedOrder(buildOrder());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plays]);
 
@@ -1389,7 +1411,7 @@ function FeedScreen() {
       setRefreshing(true);
       setPullY(0);
       // Re-rank feed with fresh randomness on refresh
-      setFeedOrder(rerankFeed(plays as unknown as FeedPlay[]));
+      setFeedOrder(buildOrder());
       setTimeout(() => setRefreshing(false), 1600);
     } else {
       setPullY(0);
@@ -1443,7 +1465,7 @@ function FeedScreen() {
         background:"linear-gradient(rgba(0,0,0,0.5), transparent)" }}>
         {/* Debug tap-to-refresh (mousedown triggers refresh for desktop preview) */}
         <span
-          onMouseDown={() => { setRefreshing(true); setFeedOrder(rerankFeed(plays as unknown as FeedPlay[])); setTimeout(() => setRefreshing(false), 1600); }}
+          onMouseDown={() => { setRefreshing(true); setFeedOrder(buildOrder()); setTimeout(() => setRefreshing(false), 1600); }}
           style={{ fontSize:15, fontWeight:600, color:"rgba(255,255,255,0.9)",
             letterSpacing:"-0.01em", cursor:"default", userSelect:"none" }}>
           {refreshing ? "Refreshing…" : "For You"}
@@ -2729,7 +2751,7 @@ function ImportLinkSheet({ onClose, onImported }:
       <div style={{ position:"absolute", bottom:0, left:0, right:0, zIndex:61,
         background: sheetBg, borderRadius:"22px 22px 0 0",
         boxShadow: isDark ? "0 -4px 32px rgba(0,0,0,0.55)" : "0 -2px 24px rgba(23,25,28,0.10)",
-        padding:"0 0 calc(28px + env(safe-area-inset-bottom))",
+        maxHeight:"calc(100dvh - 24px)",
         display:"flex", flexDirection:"column", fontFamily: STEEP.sans,
         animation:"slideUp .26s cubic-bezier(0.34,1.1,0.64,1)" }}>
         <style>{`@keyframes slideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
@@ -2752,6 +2774,11 @@ function ImportLinkSheet({ onClose, onImported }:
             </svg>
           </button>
         )}
+
+        {/* Scrollable body so the sheet always fits the screen */}
+        <div style={{ overflowY:"auto",
+          WebkitOverflowScrolling:"touch" as any,
+          paddingBottom:"calc(28px + env(safe-area-inset-bottom))" }}>
 
         {/* ── Step: paste the link ─────────────────────────────────────── */}
         {step === "paste" && (
@@ -2905,6 +2932,7 @@ function ImportLinkSheet({ onClose, onImported }:
             </div>
           </div>
         )}
+        </div>
       </div>
     </>
   );
