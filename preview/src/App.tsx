@@ -1439,7 +1439,7 @@ function FeedScreen() {
       {/* Header */}
       <div style={{ position:"absolute", top:0, left:0, right:0, zIndex:5,
         display:"flex", justifyContent:"center", alignItems:"center",
-        paddingTop:12, paddingBottom:8,
+        paddingTop:"calc(12px + env(safe-area-inset-top))", paddingBottom:8,
         background:"linear-gradient(rgba(0,0,0,0.5), transparent)" }}>
         {/* Debug tap-to-refresh (mousedown triggers refresh for desktop preview) */}
         <span
@@ -1681,7 +1681,7 @@ function CategoryScreen({ catId, navigate, from }: { catId:string; navigate:(s:S
     <div style={{ display:"flex", flexDirection:"column", height:"100%", background:T.bg }}>
 
       {/* Back nav */}
-      <div style={{ padding:"14px 20px 0", flexShrink:0 }}>
+      <div style={{ padding:"calc(14px + env(safe-area-inset-top)) 20px 0", flexShrink:0 }}>
         <button onClick={() => navigate({ id:"playbook" })}
           style={{ background:"none", border:"none", cursor:"pointer",
             padding:"4px 0 14px", display:"flex", alignItems:"center",
@@ -1996,7 +1996,7 @@ function GridScreen({ catId, label, navigate }: { catId:string; label:string; na
     <div style={{ display:"flex", flexDirection:"column", height:"100%", background:T.bg }}>
 
       {/* Header */}
-      <div style={{ padding:"14px 20px 0", flexShrink:0 }}>
+      <div style={{ padding:"calc(14px + env(safe-area-inset-top)) 20px 0", flexShrink:0 }}>
         <button onClick={goBack}
           style={{ background:"none", border:"none", cursor:"pointer",
             padding:"4px 0 12px", display:"flex", alignItems:"center",
@@ -2168,7 +2168,7 @@ function ClipPlayerScreen({ playId, from, navigate }:
 
       {/* Back button */}
       <button onClick={e => { e.stopPropagation(); navigate(from); }}
-        style={{ position:"absolute", top:14, left:14, zIndex:10,
+        style={{ position:"absolute", top:"calc(14px + env(safe-area-inset-top))", left:14, zIndex:10,
           background:"rgba(0,0,0,0.45)", backdropFilter:"blur(12px)",
           border:"1px solid rgba(255,255,255,0.15)", borderRadius:999,
           padding:"8px 14px 8px 10px",
@@ -2484,7 +2484,7 @@ function LikedScreen({ navigate }: { navigate:(s:Screen)=>void }) {
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100%", background:T.bg }}>
-      <div style={{ padding:"14px 20px 0", flexShrink:0 }}>
+      <div style={{ padding:"calc(14px + env(safe-area-inset-top)) 20px 0", flexShrink:0 }}>
         <button onClick={() => navigate({ id:"playbook" })}
           style={{ background:"none", border:"none", cursor:"pointer",
             padding:"4px 0 12px", display:"flex", alignItems:"center",
@@ -2644,17 +2644,22 @@ function ImportLinkSheet({ onClose, onImported }:
   { onClose: () => void; onImported: (p: UserPlayItem) => void }) {
   const { isDark } = useTheme();
   const T = th(isDark);
+  const [step, setStep]         = useState<"paste" | "questions" | "done">("paste");
   const [url, setUrl]           = useState("");
   const [title, setTitle]       = useState("");
   const [parentId, setParentId] = useState<string>("");
   const [subId, setSubId]       = useState<string>("");
-  const [done, setDone]         = useState(false);
 
   const parents    = CATEGORIES.filter(c => c.parentId === null);
   const subs       = parentId ? CATEGORIES.filter(c => c.parentId === parentId) : [];
   const selectedId = subs.length > 0 ? subId : parentId;
   const urlOk      = /^https?:\/\/.+\..+/i.test(url.trim());
-  const canSave    = urlOk && parentId !== "" && (subs.length === 0 || subId !== "");
+  const canSave    = parentId !== "" && (subs.length === 0 || subId !== "");
+  const platform   = detectPlatform(url.trim());
+  const platformLabel = platform === "twitter" ? "X / Twitter" : "Instagram";
+  const prettyUrl  = url.trim().replace(/^https?:\/\//i, "").replace(/\/$/, "");
+  const shortUrl   = prettyUrl.length > 40 ? prettyUrl.slice(0, 40) + "…" : prettyUrl;
+  const OK         = "#2fae6a";
 
   const sheetBg   = isDark ? "#111114" : STEEP.white;
   const handleCol = isDark ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.13)";
@@ -2671,6 +2676,20 @@ function ImportLinkSheet({ onClose, onImported }:
     backgroundImage:`url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l5 5 5-5' stroke='${isDark ? "%23ffffff66" : "%2377808666"}' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
     backgroundRepeat:"no-repeat", backgroundPosition:"right 14px center",
   };
+  const labelStyle: React.CSSProperties = {
+    fontSize:11, fontWeight:600, color: T.textFaint,
+    letterSpacing:"0.07em", marginBottom:7,
+  };
+  const primaryBtn = (label: string, onClick: () => void, enabled: boolean) => (
+    <button onClick={onClick} disabled={!enabled}
+      style={{ width:"100%", border:"none", borderRadius:14, padding:"15px",
+        background: enabled ? STEEP.ink : (isDark ? "rgba(255,255,255,0.07)" : STEEP.fog),
+        color: enabled ? STEEP.white : T.textFaint,
+        fontWeight:600, fontSize:15, cursor: enabled ? "pointer" : "default",
+        fontFamily: STEEP.sans }}>
+      {label}
+    </button>
+  );
 
   function handleParentChange(val: string) { setParentId(val); setSubId(""); }
 
@@ -2683,8 +2702,7 @@ function ImportLinkSheet({ onClose, onImported }:
 
   function save() {
     if (!canSave) return;
-    const platform = detectPlatform(url.trim());
-    const catName  = CATEGORIES.find(c => c.id === selectedId)?.name ?? "Playbook";
+    const catName = CATEGORIES.find(c => c.id === selectedId)?.name ?? "Playbook";
     const play: UserPlayItem = {
       id: `user-${Date.now()}`,
       categoryId: selectedId,
@@ -2698,17 +2716,17 @@ function ImportLinkSheet({ onClose, onImported }:
       gradient: ["#1a2440", "#0d0d0f"],
     };
     onImported(play);
-    setDone(true);
-    setTimeout(onClose, 1000);
+    setStep("done");
+    setTimeout(onClose, 1100);
   }
 
   return (
     <>
       <div onClick={onClose} style={{ position:"absolute", inset:0,
         background: isDark ? "rgba(0,0,0,0.55)" : "rgba(23,25,28,0.35)",
-        backdropFilter:"blur(4px)", zIndex:40 }} />
+        backdropFilter:"blur(4px)", zIndex:60 }} />
 
-      <div style={{ position:"absolute", bottom:0, left:0, right:0, zIndex:41,
+      <div style={{ position:"absolute", bottom:0, left:0, right:0, zIndex:61,
         background: sheetBg, borderRadius:"22px 22px 0 0",
         boxShadow: isDark ? "0 -4px 32px rgba(0,0,0,0.55)" : "0 -2px 24px rgba(23,25,28,0.10)",
         padding:"0 0 calc(28px + env(safe-area-inset-bottom))",
@@ -2721,78 +2739,140 @@ function ImportLinkSheet({ onClose, onImported }:
           <div style={{ width:32, height:4, borderRadius:99, background: handleCol }} />
         </div>
 
-        {done ? (
-          <div style={{ display:"flex", flexDirection:"column", alignItems:"center",
-            gap:12, padding:"28px 24px 20px" }}>
-            <div style={{ width:52, height:52, borderRadius:"50%",
-              background: isDark ? "rgba(51,214,125,0.16)" : STEEP.apricotWash,
+        {/* Explicit close — the backdrop also closes on tap */}
+        {step !== "done" && (
+          <button onClick={onClose} aria-label="Close"
+            style={{ position:"absolute", top:14, right:16, width:30, height:30,
+              borderRadius:"50%", border:"none", cursor:"pointer", zIndex:2,
+              background: isDark ? "rgba(255,255,255,0.08)" : STEEP.fog,
               display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <svg width="22" height="18" viewBox="0 0 24 20" fill="none">
-                <path d="M2 10l7 7L22 2" stroke={T.accent} strokeWidth="2.5"
-                  strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-            <div style={{ fontFamily: STEEP.serif, fontSize:18, fontWeight:500, color: T.text }}>
-              Added to your feed
-            </div>
-          </div>
-        ) : (
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+              <path d="M1 1l9 9M10 1l-9 9" stroke={T.textSec}
+                strokeWidth="1.6" strokeLinecap="round"/>
+            </svg>
+          </button>
+        )}
+
+        {/* ── Step: paste the link ─────────────────────────────────────── */}
+        {step === "paste" && (
           <>
-            {/* Header */}
             <div style={{ padding:"6px 20px 16px", borderBottom:`1px solid ${T.divider}` }}>
               <div style={{ fontFamily: STEEP.serif, fontSize:18, fontWeight:500,
                 color: T.text, letterSpacing:"-0.01em" }}>Import a link</div>
               <div style={{ fontSize:13, color: T.textFaint, marginTop:3 }}>
-                Paste an X or Instagram link and file it in your playbook.
+                Paste an X or Instagram link to a football clip.
               </div>
             </div>
 
             <div style={{ padding:"18px 20px 4px", display:"flex",
-              flexDirection:"column", gap:14 }}>
-              {/* Link */}
+              flexDirection:"column", gap:12 }}>
               <div>
-                <div style={{ fontSize:11, fontWeight:600, color: T.textFaint,
-                  letterSpacing:"0.07em", marginBottom:7 }}>LINK</div>
+                <div style={labelStyle}>LINK</div>
                 <div style={{ display:"flex", gap:8 }}>
                   <input value={url} onChange={e => setUrl(e.target.value)}
                     placeholder="https://x.com/…" autoCapitalize="none"
                     style={{ ...fieldStyle, flex:1, minWidth:0 }} />
                   <button onClick={pasteFromClipboard}
-                    style={{ padding:"0 14px", borderRadius:12, flexShrink:0,
-                      border:`1px solid ${inputBdr}`, background: inputBg,
-                      color: T.text, fontSize:13, fontWeight:600, cursor:"pointer",
-                      fontFamily: STEEP.sans }}>
+                    style={{ padding:"0 16px", borderRadius:12, flexShrink:0,
+                      border:"none", background: STEEP.ink, color: STEEP.white,
+                      fontSize:13, fontWeight:600, cursor:"pointer", fontFamily: STEEP.sans }}>
                     Paste
                   </button>
                 </div>
               </div>
 
-              {/* Title */}
-              <div>
-                <div style={{ fontSize:11, fontWeight:600, color: T.textFaint,
-                  letterSpacing:"0.07em", marginBottom:7 }}>
-                  TITLE <span style={{ opacity:0.6 }}>(optional)</span>
+              {/* Visual confirmation once a valid link is present */}
+              {urlOk && (
+                <div style={{ display:"flex", alignItems:"center", gap:12,
+                  padding:"12px 14px", borderRadius:12,
+                  background: isDark ? "rgba(47,174,106,0.12)" : "rgba(47,174,106,0.10)",
+                  border:`1px solid ${isDark ? "rgba(47,174,106,0.35)" : "rgba(47,174,106,0.30)"}`,
+                  animation:"toastIn .2s ease" }}>
+                  <div style={{ width:26, height:26, borderRadius:"50%", flexShrink:0,
+                    background: OK, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                    <svg width="13" height="11" viewBox="0 0 13 11" fill="none">
+                      <path d="M1 5.5l3.5 3.5L12 1.5" stroke="#fff" strokeWidth="2"
+                        strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontSize:14, fontWeight:600, color: T.text }}>
+                      Link captured
+                    </div>
+                    <div style={{ fontSize:12, color: T.textSec,
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {platformLabel} · {shortUrl}
+                    </div>
+                  </div>
                 </div>
+              )}
+            </div>
+
+            <div style={{ padding:"16px 20px 0" }}>
+              {primaryBtn("Continue", () => setStep("questions"), urlOk)}
+            </div>
+          </>
+        )}
+
+        {/* ── Step: categorize (the 3 questions) ───────────────────────── */}
+        {step === "questions" && (
+          <>
+            <div style={{ padding:"6px 20px 14px", borderBottom:`1px solid ${T.divider}` }}>
+              <button onClick={() => setStep("paste")}
+                style={{ background:"none", border:"none", cursor:"pointer", padding:"0 0 8px",
+                  display:"flex", alignItems:"center", gap:6, color: T.textSec, fontSize:13,
+                  fontFamily: STEEP.sans }}>
+                <svg width="6" height="10" viewBox="0 0 6 10" fill="none">
+                  <path d="M5 1L1 5l4 4" stroke="currentColor" strokeWidth="1.5"
+                    strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Back
+              </button>
+              <div style={{ fontFamily: STEEP.serif, fontSize:18, fontWeight:500,
+                color: T.text, letterSpacing:"-0.01em" }}>Categorize this play</div>
+              <div style={{ fontSize:13, color: T.textFaint, marginTop:3 }}>
+                Three quick questions to file it in your playbook.
+              </div>
+            </div>
+
+            {/* Confirmed-link chip */}
+            <div style={{ margin:"14px 20px 0", display:"flex", alignItems:"center", gap:8,
+              padding:"8px 12px", borderRadius:10, background: inputBg,
+              border:`1px solid ${inputBdr}` }}>
+              <div style={{ width:16, height:16, borderRadius:"50%", flexShrink:0,
+                background: OK, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <svg width="9" height="7" viewBox="0 0 13 11" fill="none">
+                  <path d="M1 5.5l3.5 3.5L12 1.5" stroke="#fff" strokeWidth="2.4"
+                    strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <span style={{ fontSize:12, color: T.textSec, overflow:"hidden",
+                textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                {platformLabel} · {shortUrl}
+              </span>
+            </div>
+
+            <div style={{ padding:"16px 20px 4px", display:"flex",
+              flexDirection:"column", gap:14 }}>
+              {/* Q1 — name */}
+              <div>
+                <div style={labelStyle}>1 · NAME THIS PLAY <span style={{ opacity:0.6 }}>(optional)</span></div>
                 <input value={title} onChange={e => setTitle(e.target.value)}
                   placeholder="e.g. Mesh concept vs. Cover 3" style={fieldStyle} />
               </div>
-
-              {/* Category */}
+              {/* Q2 — category */}
               <div>
-                <div style={{ fontSize:11, fontWeight:600, color: T.textFaint,
-                  letterSpacing:"0.07em", marginBottom:7 }}>CATEGORY</div>
+                <div style={labelStyle}>2 · CATEGORY</div>
                 <select value={parentId} onChange={e => handleParentChange(e.target.value)}
                   style={selectStyle}>
                   <option value="" disabled>Select a play type…</option>
                   {parents.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
-
-              {/* Sub-category */}
+              {/* Q3 — sub-category (when the category has one) */}
               {parentId !== "" && subs.length > 0 && (
                 <div>
-                  <div style={{ fontSize:11, fontWeight:600, color: T.textFaint,
-                    letterSpacing:"0.07em", marginBottom:7 }}>SUB-CATEGORY</div>
+                  <div style={labelStyle}>3 · SUB-CATEGORY</div>
                   <select value={subId} onChange={e => setSubId(e.target.value)}
                     style={selectStyle}>
                     <option value="" disabled>Select a sub-category…</option>
@@ -2802,18 +2882,28 @@ function ImportLinkSheet({ onClose, onImported }:
               )}
             </div>
 
-            {/* Save */}
             <div style={{ padding:"16px 20px 0" }}>
-              <button onClick={save} disabled={!canSave}
-                style={{ width:"100%", border:"none", borderRadius:14, padding:"15px",
-                  background: canSave ? STEEP.ink : (isDark ? "rgba(255,255,255,0.07)" : STEEP.fog),
-                  color: canSave ? STEEP.white : T.textFaint,
-                  fontWeight:600, fontSize:15, cursor: canSave ? "pointer" : "default",
-                  fontFamily: STEEP.sans }}>
-                Add to Playbook
-              </button>
+              {primaryBtn("Add to Playbook", save, canSave)}
             </div>
           </>
+        )}
+
+        {/* ── Step: success ────────────────────────────────────────────── */}
+        {step === "done" && (
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center",
+            gap:12, padding:"28px 24px 20px" }}>
+            <div style={{ width:52, height:52, borderRadius:"50%",
+              background:"rgba(47,174,106,0.16)",
+              display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <svg width="22" height="18" viewBox="0 0 24 20" fill="none">
+                <path d="M2 10l7 7L22 2" stroke={OK} strokeWidth="2.5"
+                  strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <div style={{ fontFamily: STEEP.serif, fontSize:18, fontWeight:500, color: T.text }}>
+              Added to your feed
+            </div>
+          </div>
         )}
       </div>
     </>
@@ -2855,7 +2945,10 @@ function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100%",
-      background:T.bg2, overflow:"hidden" }}>
+      background:T.bg2, overflow:"hidden",
+      // Lift the whole screen above the floating tab bar (zIndex 20) while the
+      // import sheet is open, so the sheet sits on top and taps reach it.
+      position:"relative", zIndex: importOpen ? 50 : undefined }}>
       <div style={{ flex:1, overflowY:"auto", paddingBottom:100 }}
         className="hide-scrollbar">
 
@@ -3418,7 +3511,7 @@ function StreakBadge() {
   if (streak.count === 0) return null;
   return (
     <div style={{
-      position:"absolute", top:16, right:16, zIndex:6,
+      position:"absolute", top:"calc(16px + env(safe-area-inset-top))", right:16, zIndex:6,
       display:"flex", alignItems:"center", gap:5,
       padding:"6px 10px", borderRadius:99,
       background:"rgba(0,0,0,0.35)",
@@ -4932,7 +5025,7 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
       }}>
         <button onClick={() => setPhase("onboarding")}
           style={{ background:"none", border:"none", cursor:"pointer",
-            padding:"18px 20px 8px", display:"flex", alignItems:"center",
+            padding:"calc(18px + env(safe-area-inset-top)) 20px 8px", display:"flex", alignItems:"center",
             gap:6, color:STEEP.graphite, fontSize:13, alignSelf:"flex-start" }}>
           <svg width="6" height="10" viewBox="0 0 6 10" fill="none">
             <path d="M5 1L1 5l4 4" stroke="currentColor" strokeWidth="1.5"
