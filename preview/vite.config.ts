@@ -8,6 +8,8 @@ export default defineConfig({
     host: true,
     port: 5174,
     strictPort: true,
+    // Allow public tunnels (localhost.run / cloudflare / localtunnel)
+    allowedHosts: true,
     proxy: {
       // Dev-only: resolve X syndication without CORS (playback URL only — not stored)
       '/tw-syndication': {
