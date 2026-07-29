@@ -427,7 +427,11 @@ async function resolveTwitterStream(sourceUrl: string): Promise<string | null> {
   if (!id) return null;
   if (PREVIEW_LOCAL_STREAM[id]) return PREVIEW_LOCAL_STREAM[id];
   try {
-    const res = await fetch(`/tw-syndication/tweet-result?id=${id}&lang=en&token=0`);
+    // Dev uses the Vite proxy; production uses the /api/tweet edge function.
+    const endpoint = import.meta.env.DEV
+      ? `/tw-syndication/tweet-result?id=${id}&lang=en&token=0`
+      : `/api/tweet?id=${id}`;
+    const res = await fetch(endpoint);
     if (!res.ok) return null;
     const payload = await res.json();
     const mediaDetails: Array<Record<string, unknown>> = payload?.mediaDetails ?? [];
