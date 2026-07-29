@@ -10,6 +10,9 @@ export type DeviceTemplate = {
   corner: number;
   /** Dynamic Island vs classic notch. */
   island: "dynamic" | "notch" | "none";
+  /** iOS safe-area insets, so screen chrome clears the status bar / indicator. */
+  safeTop: number;
+  safeBottom: number;
 };
 
 export const IPHONE_TEMPLATES: DeviceTemplate[] = [
@@ -20,6 +23,8 @@ export const IPHONE_TEMPLATES: DeviceTemplate[] = [
     height: 852,
     corner: 55,
     island: "dynamic",
+    safeTop: 59,
+    safeBottom: 34,
   },
   {
     id: "iphone-16-pro-max",
@@ -28,6 +33,8 @@ export const IPHONE_TEMPLATES: DeviceTemplate[] = [
     height: 932,
     corner: 55,
     island: "dynamic",
+    safeTop: 62,
+    safeBottom: 34,
   },
   {
     id: "iphone-16",
@@ -36,6 +43,8 @@ export const IPHONE_TEMPLATES: DeviceTemplate[] = [
     height: 852,
     corner: 47,
     island: "dynamic",
+    safeTop: 59,
+    safeBottom: 34,
   },
   {
     id: "iphone-15",
@@ -44,6 +53,8 @@ export const IPHONE_TEMPLATES: DeviceTemplate[] = [
     height: 852,
     corner: 47,
     island: "dynamic",
+    safeTop: 59,
+    safeBottom: 34,
   },
   {
     id: "iphone-se",
@@ -52,6 +63,8 @@ export const IPHONE_TEMPLATES: DeviceTemplate[] = [
     height: 667,
     corner: 20,
     island: "none",
+    safeTop: 20,
+    safeBottom: 0,
   },
 ];
 
@@ -243,6 +256,10 @@ export default function IPhoneSimulator({
                 width: device.width,
                 height: device.height,
                 borderRadius: device.corner,
+                // The browser reports no insets, so the device template supplies
+                // them and app screens lay out like they do on iOS.
+                ["--pb-safe-top" as string]: `${device.safeTop}px`,
+                ["--pb-safe-bottom" as string]: `${device.safeBottom}px`,
               }}
             >
               <div className="sim-chrome-overlay">
