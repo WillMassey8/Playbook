@@ -2679,9 +2679,10 @@ function ImportLinkSheet({ onClose, onImported }:
 
   const parents    = CATEGORIES.filter(c => c.parentId === null);
   const subs       = parentId ? CATEGORIES.filter(c => c.parentId === parentId) : [];
-  const selectedId = subs.length > 0 ? subId : parentId;
+  const selectedId = subId !== "" ? subId : parentId;
   const urlOk      = /^https?:\/\/.+\..+/i.test(url.trim());
-  const canSave    = parentId !== "" && (subs.length === 0 || subId !== "");
+  // Sub-category is optional — a play with only a top-level pick files under it.
+  const canSave    = parentId !== "";
   const platform   = detectPlatform(url.trim());
   const platformLabel = platform === "twitter" ? "X / Twitter" : "Instagram";
   const prettyUrl  = url.trim().replace(/^https?:\/\//i, "").replace(/\/$/, "");
@@ -2904,10 +2905,12 @@ function ImportLinkSheet({ onClose, onImported }:
               {/* Q3 — sub-category (when the category has one) */}
               {parentId !== "" && subs.length > 0 && (
                 <div>
-                  <div style={labelStyle}>3 · SUB-CATEGORY</div>
+                  <div style={labelStyle}>3 · SUB-CATEGORY <span style={{ opacity:0.6 }}>(optional)</span></div>
                   <select value={subId} onChange={e => setSubId(e.target.value)}
                     style={selectStyle}>
-                    <option value="" disabled>Select a sub-category…</option>
+                    <option value="">
+                      File under {parents.find(p => p.id === parentId)?.name}
+                    </option>
                     {subs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </div>
@@ -2916,6 +2919,12 @@ function ImportLinkSheet({ onClose, onImported }:
 
             <div style={{ padding:"16px 20px 0" }}>
               {primaryBtn("Add to Playbook", save, canSave)}
+              {!canSave && (
+                <div style={{ fontSize:12, color: T.textFaint, textAlign:"center",
+                  marginTop:9 }}>
+                  Pick a category above to save this play.
+                </div>
+              )}
             </div>
           </>
         )}
