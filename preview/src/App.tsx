@@ -2188,20 +2188,132 @@ function GridScreen({ catId, label, navigate }: { catId:string; label:string; na
 }
 
 // ─── SINGLE CLIP PLAYER SCREEN ────────────────────────────────────────────────
+/** One full-screen page of the clip pager. */
+function ClipPage({ play, isActive, paused, onTogglePause }: {
+  play: FeedPlay; isActive: boolean; paused: boolean; onTogglePause: () => void;
+}) {
+  const videoRef  = useRef<HTMLVideoElement>(null);
+  const streamUrl = usePlaybackStream(play, isActive);
+  const playbackSrc = play.videoStoragePath || streamUrl;
+
+  const cat    = CATEGORIES.find(c => c.id === play.categoryId);
+  const parent = cat?.parentId ? CATEGORIES.find(c => c.id === cat.parentId) : null;
+
+  return (
+    <div style={{ position:"relative", width:"100%", height:"100%",
+      background:"#000", overflow:"hidden" }}
+      onClick={() => { if (playbackSrc) onTogglePause(); }}>
+
+      <PlayMediaBackdrop play={play} />
+      {playbackSrc && (
+        <NativeClipVideo src={playbackSrc} isActive={isActive}
+          paused={paused} videoRef={videoRef} />
+      )}
+
+      {/* Resolving the stream */}
+      {isActive && !playbackSrc && play.platform === "twitter" && (
+        <div style={{ position:"absolute", inset:0, display:"flex",
+          alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
+          <div style={{ width:28, height:28, borderRadius:"50%",
+            border:"2px solid rgba(255,255,255,0.15)",
+            borderTopColor:"rgba(255,255,255,0.85)",
+            animation:"spin 0.7s linear infinite" }} />
+        </div>
+      )}
+
+      {/* Pause indicator */}
+      {playbackSrc && paused && isActive && (
+        <div style={{ position:"absolute", inset:0, display:"flex",
+          alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
+          <div style={{ width:64, height:64, borderRadius:"50%",
+            background:"rgba(0,0,0,0.5)", backdropFilter:"blur(12px)",
+            border:"1px solid rgba(255,255,255,0.2)",
+            display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <svg width="20" height="22" viewBox="0 0 20 22" fill="white" style={{ marginLeft:2 }}>
+              <path d="M2 2l16 9L2 20V2z"/>
+            </svg>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom info overlay */}
+      <div style={{ position:"absolute", bottom:0, left:0, right:0,
+        background:"linear-gradient(transparent, rgba(0,0,0,0.85))",
+        padding:"48px 16px calc(24px + var(--pb-safe-bottom, env(safe-area-inset-bottom)))",
+        pointerEvents:"none" }}>
+        {(parent || cat) && (
+          <div style={{ fontSize:11, fontWeight:500, color:"rgba(255,255,255,0.5)",
+            letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:6 }}>
+            {parent ? `${parent.name}  ›  ${cat?.name}` : cat?.name}
+          </div>
+        )}
+        <div style={{ fontSize:17, fontWeight:600, color:"#fff",
+          letterSpacing:"-0.02em", marginBottom:8 }}>{play.title}</div>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <PlatformBadge platform={play.platform} />
+          <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>
+            {play.views.toLocaleString()} views
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ClipPlayerScreen({ playId, from, navigate }:
   { playId:string; from:Screen; navigate:(s:Screen)=>void }) {
   const { isDark } = useTheme();
   const T = th(isDark);
   // Imported plays live alongside the seeded ones, so look through both.
   const { plays } = usePlays();
-  const play = plays.find(p => p.id === playId) as FeedPlay | undefined;
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [paused, setPaused] = useState(false);
-  const streamUrl = usePlaybackStream(play, true);
-  const userVideo = play?.videoStoragePath;
-  const playbackSrc = userVideo || streamUrl;
+  const { likedIds } = useLikes();
 
-  if (!play) {
+  // Opening a clip enters the whole set it came from, so a coach can keep
+  // swiping through the rest of the category instead of backing out each time.
+  const reel = useMemo<FeedPlay[]>(() => {
+    const catId = (from as { catId?:string } | undefined)?.catId;
+    const source: FeedPlay[] =
+      from?.id === "liked"
+        ? (plays.filter(p => likedIds.has(p.id)) as FeedPlay[])
+        : catId
+        ? (playsInCat(catId) as FeedPlay[])
+        : (plays as FeedPlay[]);
+    return source.some(p => p.id === playId)
+      ? source
+      : (plays.filter(p => p.id === playId) as FeedPlay[]);
+    // likedIds is only read to seed the list; re-ordering mid-swipe would be jarring.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, plays, playId]);
+
+  const startIdx = Math.max(0, reel.findIndex(p => p.id === playId));
+  const [activeIdx, setActiveIdx] = useState(startIdx);
+  const [paused, setPaused]       = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Open on the clip that was tapped rather than the top of the category.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || startIdx === 0) return;
+    el.scrollTop = startIdx * el.clientHeight;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const idx = Math.round(el.scrollTop / el.clientHeight);
+      setActiveIdx(prev => {
+        if (prev === idx) return prev;
+        setPaused(false);   // a new clip always starts playing
+        return idx;
+      });
+    };
+    el.addEventListener("scroll", onScroll, { passive:true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [reel.length]);
+
+  if (reel.length === 0) {
     return (
       <div style={{ width:"100%", height:"100%", background:T.bg,
         display:"flex", flexDirection:"column", alignItems:"center",
@@ -2218,33 +2330,29 @@ function ClipPlayerScreen({ playId, from, navigate }:
       </div>
     );
   }
-  const cat = CATEGORIES.find(c => c.id === play.categoryId);
-  const parent = cat?.parentId ? CATEGORIES.find(c => c.id === cat!.parentId) : null;
 
   return (
     <div style={{ position:"relative", width:"100%", height:"100%",
-      background:"#000", overflow:"hidden" }}
-      onClick={() => playbackSrc && setPaused(p => !p)}>
+      background:"#000", overflow:"hidden" }}>
 
-      <PlayMediaBackdrop play={play} />
-      {playbackSrc && (
-        <NativeClipVideo src={playbackSrc} isActive={true} paused={paused} videoRef={videoRef} />
-      )}
-
-      {/* Pause indicator */}
-      {playbackSrc && paused && (
-        <div style={{ position:"absolute", inset:0, display:"flex",
-          alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
-          <div style={{ width:64, height:64, borderRadius:"50%",
-            background:"rgba(0,0,0,0.5)", backdropFilter:"blur(12px)",
-            border:"1px solid rgba(255,255,255,0.2)",
-            display:"flex", alignItems:"center", justifyContent:"center" }}>
-            <svg width="20" height="22" viewBox="0 0 20 22" fill="white" style={{ marginLeft:2 }}>
-              <path d="M2 2l16 9L2 20V2z"/>
-            </svg>
+      <div
+        ref={scrollRef}
+        className="hide-scrollbar"
+        style={{ height:"100%", overflowY:"scroll",
+          scrollSnapType:"y mandatory", WebkitOverflowScrolling:"touch" as any,
+          scrollbarWidth:"none", msOverflowStyle:"none" as any }}>
+        {reel.map((p, i) => (
+          <div key={p.id} style={{ height:"100%", scrollSnapAlign:"start",
+            scrollSnapStop:"always", flexShrink:0 }}>
+            <ClipPage
+              play={p}
+              isActive={i === activeIdx}
+              paused={paused}
+              onTogglePause={() => setPaused(v => !v)}
+            />
           </div>
-        </div>
-      )}
+        ))}
+      </div>
 
       {/* Back button */}
       <button onClick={e => { e.stopPropagation(); navigate(from); }}
@@ -2261,25 +2369,18 @@ function ClipPlayerScreen({ playId, from, navigate }:
         Back
       </button>
 
-      {/* Bottom info overlay */}
-      <div style={{ position:"absolute", bottom:0, left:0, right:0,
-        background:"linear-gradient(transparent, rgba(0,0,0,0.85))",
-        padding:"48px 16px 24px", pointerEvents:"none" }}>
-        {(parent || cat) && (
-          <div style={{ fontSize:11, fontWeight:500, color:"rgba(255,255,255,0.5)",
-            letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:6 }}>
-            {parent ? `${parent.name}  ›  ${cat?.name}` : cat?.name}
-          </div>
-        )}
-        <div style={{ fontSize:17, fontWeight:600, color:"#fff",
-          letterSpacing:"-0.02em", marginBottom:8 }}>{play.title}</div>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <PlatformBadge platform={play.platform} />
-          <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>
-            {play.views.toLocaleString()} views
-          </span>
+      {/* Position in the category */}
+      {reel.length > 1 && (
+        <div style={{ position:"absolute",
+          top:"calc(16px + var(--pb-safe-top, env(safe-area-inset-top)))", right:14, zIndex:10,
+          background:"rgba(0,0,0,0.45)", backdropFilter:"blur(12px)",
+          border:"1px solid rgba(255,255,255,0.15)", borderRadius:999,
+          padding:"6px 11px", color:"rgba(255,255,255,0.85)",
+          fontSize:12, fontWeight:500, fontVariantNumeric:"tabular-nums",
+          pointerEvents:"none" }}>
+          {activeIdx + 1} / {reel.length}
         </div>
-      </div>
+      )}
     </div>
   );
 }
