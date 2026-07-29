@@ -43,3 +43,6 @@ supabase/.temp
 .DS_Store
 Thumbs.db
 bash.exe.stackdump
+
+# Local tunnel binaries for preview
+preview/.bin/
