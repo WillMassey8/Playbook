@@ -4407,7 +4407,7 @@ type OnboardingStaff = "solo" | "staff" | "large";
 type OnboardingPain =
   | "save_forget" | "cant_find" | "group_chat_lost" | "scroll_again";
 type OnboardingVolume = "light" | "medium" | "heavy" | "constant";
-type OnboardingPlan = "annual" | "monthly" | "team" | "free";
+type OnboardingPlan = "annual" | "monthly" | "free" | "team5" | "team10";
 
 type OnboardingAnswers = {
   userType: OnboardingUserType | null;
@@ -4853,14 +4853,19 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
     if (step === "preview") return "See your plan";
     if (step === "paywall") {
       if (answers.plan === "free") return "Continue for free";
-      if (answers.plan === "team") return "Get the Team plan";
+      if (answers.plan === "team5" || answers.plan === "team10") return "Get the Team plan";
       return "Get Unlimited";
     }
     return "Continue";
   })();
 
-  const showTeamPlan = answers.userType === "coach";
   const recommendTeam = answers.staff === "staff" || answers.staff === "large";
+  // Paywall toggle: Individual vs Team plans
+  const [planTab, setPlanTab] = useState<"individual" | "team">("individual");
+  function chooseTab(tab: "individual" | "team") {
+    setPlanTab(tab);
+    setAnswers(a => ({ ...a, plan: tab === "team" ? "team5" : "annual" }));
+  }
 
   // Total steps shown to user = real steps - 1 (building screen hidden from count)
   const displaySteps = steps.filter(s => s !== "building");
@@ -5016,6 +5021,23 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
               ? "Save it. Find it. Share it."
               : "Every play, ready when you need it"}>
 
+            {/* Individual / Team toggle */}
+            <div style={{ display:"flex", gap:4, background: STEEP.fog,
+              borderRadius:12, padding:4, marginBottom:14 }}>
+              {(["individual","team"] as const).map(tab => (
+                <button key={tab} type="button" onClick={() => chooseTab(tab)}
+                  style={{ flex:1, padding:"9px 0", borderRadius:9, border:"none",
+                    cursor:"pointer",
+                    background: planTab === tab ? STEEP.white : "transparent",
+                    boxShadow: planTab === tab ? STEEP.cardShadow : "none",
+                    color: planTab === tab ? STEEP.ink : STEEP.graphite,
+                    fontSize:14, fontWeight:600, fontFamily: STEEP.sans,
+                    letterSpacing:"-0.01em", transition:"all .15s" }}>
+                  {tab === "individual" ? "Individual" : "Team"}
+                </button>
+              ))}
+            </div>
+
             {/* Social proof */}
             <div style={{
               background: STEEP.white,
@@ -5042,47 +5064,60 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
             <div style={{ display:"flex", flexDirection:"column", gap:12,
               marginTop:14, paddingTop:6 }}>
 
-              {/* Annual — DEFAULT, recommended */}
-              <PaywallPlanCard
-                selected={answers.plan === "annual"}
-                onClick={() => setAnswers(a => ({ ...a, plan:"annual" }))}
-                name="Annual"
-                price="$2.92/mo"
-                sublabel="$34.99/year · unlimited playbook saves"
-                badge="Best value"
-                badgeBg={STEEP.rust}
-                savings="Save 73%"
-              />
+              {planTab === "individual" ? (
+                <>
+                  {/* Annual — recommended */}
+                  <PaywallPlanCard
+                    selected={answers.plan === "annual"}
+                    onClick={() => setAnswers(a => ({ ...a, plan:"annual" }))}
+                    name="Annual"
+                    price="$2.92/mo"
+                    sublabel="$34.99/year · unlimited playbook saves"
+                    badge="Best value"
+                    badgeBg={STEEP.rust}
+                    savings="Save 73%"
+                  />
 
-              {/* Monthly anchor */}
-              <PaywallPlanCard
-                selected={answers.plan === "monthly"}
-                onClick={() => setAnswers(a => ({ ...a, plan:"monthly" }))}
-                name="Monthly"
-                price="$10.99/mo"
-                sublabel="Unlimited playbook saves"
-              />
+                  {/* Monthly */}
+                  <PaywallPlanCard
+                    selected={answers.plan === "monthly"}
+                    onClick={() => setAnswers(a => ({ ...a, plan:"monthly" }))}
+                    name="Monthly"
+                    price="$10.99/mo"
+                    sublabel="Unlimited playbook saves"
+                  />
 
-              {/* Free — freemium tier, always available */}
-              <PaywallPlanCard
-                selected={answers.plan === "free"}
-                onClick={() => setAnswers(a => ({ ...a, plan:"free" }))}
-                name="Free"
-                price="$0"
-                sublabel="Save up to 10 plays · browse the full feed"
-              />
+                  {/* Free — freemium tier */}
+                  <PaywallPlanCard
+                    selected={answers.plan === "free"}
+                    onClick={() => setAnswers(a => ({ ...a, plan:"free" }))}
+                    name="Free"
+                    price="$0"
+                    sublabel="Save up to 10 plays · browse the full feed"
+                  />
+                </>
+              ) : (
+                <>
+                  {/* Team — up to 5 coaches */}
+                  <PaywallPlanCard
+                    selected={answers.plan === "team5"}
+                    onClick={() => setAnswers(a => ({ ...a, plan:"team5" }))}
+                    name="5 Coaches"
+                    price="$39.99/mo"
+                    sublabel="Up to 5 coaches · shared playbook · unlimited saves"
+                    badge={recommendTeam ? "Most popular" : undefined}
+                    badgeBg={STEEP.ink}
+                  />
 
-              {/* Team — coaches only, recommended for staff */}
-              {showTeamPlan && (
-                <PaywallPlanCard
-                  selected={answers.plan === "team"}
-                  onClick={() => setAnswers(a => ({ ...a, plan:"team" }))}
-                  name="Team"
-                  price="$49.99/mo"
-                  sublabel="Up to 6 coaches · 2,000 clips · shared playbook"
-                  badge={recommendTeam ? "Best for staff" : undefined}
-                  badgeBg={STEEP.ink}
-                />
+                  {/* Team — up to 10 coaches */}
+                  <PaywallPlanCard
+                    selected={answers.plan === "team10"}
+                    onClick={() => setAnswers(a => ({ ...a, plan:"team10" }))}
+                    name="10 Coaches"
+                    price="$69.99/mo"
+                    sublabel="Up to 10 coaches · shared playbook · unlimited saves"
+                  />
+                </>
               )}
             </div>
 
