@@ -4796,7 +4796,7 @@ function ReverseTrialSheet({ onAccept, onDecline }:
               padding:"16px 0 0", cursor:"pointer",
               fontSize:14, color:STEEP.graphite, letterSpacing:"-0.009em",
               fontFamily:STEEP.sans }}>
-            Continue with free (10 clips)
+            Continue with free (5 clips)
           </button>
         </div>
       </div>
@@ -5023,7 +5023,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
 
             {/* Individual / Team toggle */}
             <div style={{ display:"flex", gap:4, background: STEEP.fog,
-              borderRadius:12, padding:4, marginBottom:14 }}>
+              borderRadius:12, padding:4, marginBottom:12 }}>
               {(["individual","team"] as const).map(tab => (
                 <button key={tab} type="button" onClick={() => chooseTab(tab)}
                   style={{ flex:1, padding:"9px 0", borderRadius:9, border:"none",
@@ -5061,8 +5061,8 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
               </div>
             </div>
 
-            <div style={{ display:"flex", flexDirection:"column", gap:12,
-              marginTop:14, paddingTop:6 }}>
+            <div style={{ display:"flex", flexDirection:"column", gap:10,
+              marginTop:10, paddingTop:0 }}>
 
               {planTab === "individual" ? (
                 <>
@@ -5093,7 +5093,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                     onClick={() => setAnswers(a => ({ ...a, plan:"free" }))}
                     name="Free"
                     price="$0"
-                    sublabel="Save up to 10 plays · browse the full feed"
+                    sublabel="Save up to 5 plays · browse the full feed"
                   />
                 </>
               ) : (
@@ -5120,11 +5120,6 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                 </>
               )}
             </div>
-
-            <p style={{ fontSize:12, color:STEEP.dove, textAlign:"center",
-              marginTop:14, lineHeight:1.5, padding:"0 4px" }}>
-              Free forever with 10 saves. Upgrade for unlimited — cancel anytime.
-            </p>
 
             {/* Trust links */}
             <div style={{ display:"flex", justifyContent:"center", gap:14,
