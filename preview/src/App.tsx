@@ -5305,7 +5305,7 @@ function AuthSheet({ title, onEmailPress, onClose, onDone }:
 }
 
 function AuthScreen({ onDone }: { onDone:()=>void }) {
-  const [phase, setPhase]     = useState<"landing"|"onboarding"|"email">("landing");
+  const [phase, setPhase]     = useState<"landing"|"onboarding"|"create"|"email">("landing");
   const [sheet, setSheet]     = useState<"none"|"open">("none");
   const [email, setEmail]     = useState("");
   const [pass, setPass]       = useState("");
@@ -5320,9 +5320,74 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
   if (phase === "onboarding") {
     return (
       <OnboardingFlow
-        onComplete={() => setPhase("email")}
+        onComplete={() => setPhase("create")}
         onBack={() => setPhase("landing")}
       />
+    );
+  }
+
+  // ── Create account (immediately after the paywall) ─────────────────────────
+  if (phase === "create") {
+    return (
+      <div style={{
+        height:"100%", display:"flex", flexDirection:"column",
+        background: STEEP.white,
+      }}>
+        <button onClick={() => setPhase("onboarding")}
+          style={{ background:"none", border:"none", cursor:"pointer",
+            padding:"calc(18px + var(--pb-safe-top, env(safe-area-inset-top))) 20px 8px",
+            display:"flex", alignItems:"center",
+            gap:6, color:STEEP.graphite, fontSize:13, alignSelf:"flex-start" }}>
+          <svg width="6" height="10" viewBox="0 0 6 10" fill="none">
+            <path d="M5 1L1 5l4 4" stroke="currentColor" strokeWidth="1.5"
+              strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Back
+        </button>
+        <div style={{ flex:1, display:"flex", flexDirection:"column",
+          justifyContent:"center", padding:"0 28px 40px" }}>
+          <div style={{ marginBottom:32 }}>
+            <div style={{ fontSize:26, fontWeight:400, color:STEEP.ink,
+              fontFamily:STEEP.serif, letterSpacing:"-0.025em", marginBottom:8 }}>
+              Create your account
+            </div>
+            <div style={{ fontSize:14, color:STEEP.graphite, letterSpacing:"-0.009em" }}>
+              Save your playbook and keep it synced across devices.
+            </div>
+          </div>
+
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            {/* Apple */}
+            <button onClick={onDone}
+              style={{ width:"100%", display:"flex", alignItems:"center",
+                justifyContent:"center", gap:10, background:STEEP.ink,
+                border:"none", borderRadius:999, padding:"15px", cursor:"pointer" }}>
+              <svg width="17" height="20" viewBox="0 0 17 20" fill="#fff">
+                <path d="M14.04 10.57c-.02-2.15 1.75-3.18 1.83-3.23-1-1.46-2.55-1.66-3.1-1.68-1.32-.14-2.58.78-3.25.78-.67 0-1.7-.76-2.8-.74C5.1 5.72 3.6 6.67 2.77 8.12 1.08 11.06 2.33 15.41 4 17.6c.83 1.18 1.82 2.5 3.12 2.45 1.25-.05 1.72-.8 3.23-.8 1.5 0 1.93.8 3.24.78 1.35-.02 2.2-1.2 3.02-2.39a10.8 10.8 0 001.38-2.75c-.03-.01-2.67-1.02-2.69-4.05-.02.13 0 .13 0 .13z"/>
+                <path d="M11.72 3.44c.68-.83 1.14-1.98 1.01-3.13-1 .04-2.2.67-2.9 1.49-.63.72-1.19 1.88-1.04 2.99 1.11.08 2.25-.56 2.93-1.35z"/>
+              </svg>
+              <span style={{ fontSize:16, fontWeight:500, color:"#fff",
+                letterSpacing:"-0.009em" }}>Continue with Apple</span>
+            </button>
+
+            {/* Email */}
+            <button onClick={() => setPhase("email")}
+              style={{ width:"100%", display:"flex", alignItems:"center",
+                justifyContent:"center", gap:10, background:STEEP.white,
+                border:`1px solid ${STEEP.dove}`, borderRadius:999,
+                padding:"15px", cursor:"pointer" }}>
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                <rect x="2" y="4" width="16" height="12" rx="2"
+                  stroke={STEEP.ink} strokeWidth="1.5"/>
+                <path d="M3 6l7 5 7-5" stroke={STEEP.ink} strokeWidth="1.5"
+                  strokeLinecap="round"/>
+              </svg>
+              <span style={{ fontSize:16, fontWeight:500, color:STEEP.ink,
+                letterSpacing:"-0.009em" }}>Continue with email</span>
+            </button>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -5333,7 +5398,7 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
         height:"100%", display:"flex", flexDirection:"column",
         background: STEEP.white,
       }}>
-        <button onClick={() => setPhase("onboarding")}
+        <button onClick={() => setPhase("create")}
           style={{ background:"none", border:"none", cursor:"pointer",
             padding:"calc(18px + var(--pb-safe-top, env(safe-area-inset-top))) 20px 8px", display:"flex", alignItems:"center",
             gap:6, color:STEEP.graphite, fontSize:13, alignSelf:"flex-start" }}>
@@ -5351,7 +5416,7 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
               Continue with email
             </div>
             <div style={{ fontSize:14, color:STEEP.graphite, letterSpacing:"-0.009em" }}>
-              Create your account to start your trial
+              Create your account to save your playbook
             </div>
           </div>
           <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:20 }}>
