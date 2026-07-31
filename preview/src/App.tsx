@@ -5268,23 +5268,7 @@ function AuthSheet({ title, onEmailPress, onClose, onDone }:
             letterSpacing:"-0.009em" }}>Continue with Apple</span>
         </button>
 
-        {/* Continue with email */}
-        <button
-          onClick={onEmailPress}
-          style={{
-            width:"100%", display:"flex", alignItems:"center", justifyContent:"center",
-            gap:8, background:"none", border:"none", cursor:"pointer",
-            padding:"4px 0", marginBottom:24,
-          }}>
-          <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
-            <rect x="1" y="1" width="14" height="10" rx="2"
-              stroke={STEEP.graphite} strokeWidth="1.4"/>
-            <path d="M1 3l7 5 7-5" stroke={STEEP.graphite}
-              strokeWidth="1.4" strokeLinecap="round"/>
-          </svg>
-          <span style={{ fontSize:15, color:STEEP.graphite,
-            fontWeight:400, letterSpacing:"-0.009em" }}>Continue with email</span>
-        </button>
+        <div style={{ marginBottom:24 }} />
 
         {/* Legal */}
         <div style={{ textAlign:"center", fontSize:11,
@@ -5368,22 +5352,6 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
               </svg>
               <span style={{ fontSize:16, fontWeight:500, color:"#fff",
                 letterSpacing:"-0.009em" }}>Continue with Apple</span>
-            </button>
-
-            {/* Email */}
-            <button onClick={() => setPhase("email")}
-              style={{ width:"100%", display:"flex", alignItems:"center",
-                justifyContent:"center", gap:10, background:STEEP.white,
-                border:`1px solid ${STEEP.dove}`, borderRadius:999,
-                padding:"15px", cursor:"pointer" }}>
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-                <rect x="2" y="4" width="16" height="12" rx="2"
-                  stroke={STEEP.ink} strokeWidth="1.5"/>
-                <path d="M3 6l7 5 7-5" stroke={STEEP.ink} strokeWidth="1.5"
-                  strokeLinecap="round"/>
-              </svg>
-              <span style={{ fontSize:16, fontWeight:500, color:STEEP.ink,
-                letterSpacing:"-0.009em" }}>Continue with email</span>
             </button>
           </div>
         </div>
