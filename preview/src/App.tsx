@@ -4853,8 +4853,8 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
     if (step === "preview") return "See your plan";
     if (step === "paywall") {
       if (answers.plan === "free") return "Continue for free";
-      if (answers.plan === "team") return "Start 14-day free trial";
-      return "Start 14-day free trial";
+      if (answers.plan === "team") return "Get the Team plan";
+      return "Get Unlimited";
     }
     return "Continue";
   })();
@@ -5015,7 +5015,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
             title={answers.userType === "fan"
               ? "Save it. Find it. Share it."
               : "Every play, ready when you need it"}
-            subtitle="14-day free trial. Cancel anytime.">
+            subtitle="Start free with 10 saves. Go unlimited anytime.">
 
             {/* Social proof */}
             <div style={{
@@ -5048,11 +5048,11 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                 selected={answers.plan === "annual"}
                 onClick={() => setAnswers(a => ({ ...a, plan:"annual" }))}
                 name="Annual"
-                price="$7.42/mo"
-                sublabel="$89/year · 75 clips/mo · personal playbook"
+                price="$2.92/mo"
+                sublabel="$34.99/year · unlimited playbook saves"
                 badge="Best value"
                 badgeBg={STEEP.rust}
-                savings="Save 50%"
+                savings="Save 73%"
               />
 
               {/* Monthly anchor */}
@@ -5060,8 +5060,17 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                 selected={answers.plan === "monthly"}
                 onClick={() => setAnswers(a => ({ ...a, plan:"monthly" }))}
                 name="Monthly"
-                price="$14.99/mo"
-                sublabel="75 clips/mo · personal playbook"
+                price="$10.99/mo"
+                sublabel="Unlimited playbook saves"
+              />
+
+              {/* Free — freemium tier, always available */}
+              <PaywallPlanCard
+                selected={answers.plan === "free"}
+                onClick={() => setAnswers(a => ({ ...a, plan:"free" }))}
+                name="Free"
+                price="$0"
+                sublabel="Save up to 10 plays · browse the full feed"
               />
 
               {/* Team — coaches only, recommended for staff */}
@@ -5080,7 +5089,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
 
             <p style={{ fontSize:12, color:STEEP.dove, textAlign:"center",
               marginTop:14, lineHeight:1.5, padding:"0 4px" }}>
-              14-day free trial on paid plans. Cancel anytime in Settings.
+              Free forever with 10 saves. Upgrade for unlimited — cancel anytime.
             </p>
 
             {/* Trust links */}
@@ -5119,14 +5128,14 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
           borderTop:`1px solid rgba(167,170,175,0.18)`,
           background: STEEP.white }}>
           <GlowButton label={continueLabel} onPress={goNext} disabled={!canContinue} />
-          {step === "paywall" && (
+          {step === "paywall" && answers.plan !== "free" && (
             <button type="button"
-              onClick={() => setShowReverseTrial(true)}
+              onClick={() => { setAnswers(a => ({ ...a, plan:"free" })); onComplete(); }}
               style={{ width:"100%", background:"none", border:"none",
                 padding:"14px 0 0", cursor:"pointer",
                 fontSize:14, color:STEEP.graphite, letterSpacing:"-0.009em",
                 fontFamily:STEEP.sans }}>
-              Maybe later
+              Continue with the free plan
             </button>
           )}
         </div>
