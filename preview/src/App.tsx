@@ -5114,7 +5114,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                     selected={answers.plan === "team10"}
                     onClick={() => setAnswers(a => ({ ...a, plan:"team10" }))}
                     name="10 Coaches"
-                    price="$69.99/mo"
+                    price="$79.99/mo"
                     sublabel="Up to 10 coaches · shared playbook · unlimited saves"
                   />
                 </>
