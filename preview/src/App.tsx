@@ -5014,8 +5014,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
           <OnboardingStepShell
             title={answers.userType === "fan"
               ? "Save it. Find it. Share it."
-              : "Every play, ready when you need it"}
-            subtitle="Start free with 10 saves. Go unlimited anytime.">
+              : "Every play, ready when you need it"}>
 
             {/* Social proof */}
             <div style={{
