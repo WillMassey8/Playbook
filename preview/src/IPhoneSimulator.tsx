@@ -88,6 +88,22 @@ function useClock() {
   return now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+/** True on real phones / narrow viewports (e.g. the actual app in a WKWebView),
+ *  where we should render full-screen instead of the desktop device frame. */
+function useIsCompact() {
+  const query = "(max-width: 700px)";
+  const [compact, setCompact] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia(query).matches : true,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setCompact(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return compact;
+}
+
 function StatusBar({
   time,
   lightContent,
@@ -168,6 +184,7 @@ export default function IPhoneSimulator({
   children,
   lightStatusBar = false,
 }: Props) {
+  const isCompact = useIsCompact();
   const [deviceId, setDeviceId] = useState(loadDeviceId);
   const [scale, setScale] = useState(1);
   const time = useClock();
@@ -200,6 +217,11 @@ export default function IPhoneSimulator({
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
   }, [device]);
+
+  // Real device / narrow viewport (e.g. the actual iOS app in a WKWebView):
+  // render the app full-screen. iOS provides true safe-area insets via env(),
+  // so the desktop device template isn't needed here.
+  if (isCompact) return <>{children}</>;
 
   const outerW = device.width + BEZEL * 2;
   const outerH = device.height + BEZEL * 2;
