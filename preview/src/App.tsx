@@ -5071,11 +5071,11 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                     selected={answers.plan === "annual"}
                     onClick={() => setAnswers(a => ({ ...a, plan:"annual" }))}
                     name="Annual"
-                    price="$2.92/mo"
-                    sublabel="$34.99/year · unlimited playbook saves"
+                    price="$2.50/mo"
+                    sublabel="$29.99/year · unlimited playbook saves"
                     badge="Best value"
                     badgeBg={STEEP.rust}
-                    savings="Save 73%"
+                    savings="Save 77%"
                   />
 
                   {/* Monthly */}
