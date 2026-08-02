@@ -5116,7 +5116,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                     sublabel="$29.99/year · unlimited playbook saves"
                     badge="Best value"
                     badgeBg={STEEP.rust}
-                    savings="Save 77%"
+                    savings="Save 75%"
                   />
 
                   {/* Monthly */}
@@ -5124,7 +5124,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                     selected={answers.plan === "monthly"}
                     onClick={() => setAnswers(a => ({ ...a, plan:"monthly" }))}
                     name="Monthly"
-                    price="$10.99/mo"
+                    price="$9.99/mo"
                     sublabel="Unlimited playbook saves"
                   />
 
@@ -5144,7 +5144,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                     selected={answers.plan === "team5"}
                     onClick={() => setAnswers(a => ({ ...a, plan:"team5" }))}
                     name="5 Coaches"
-                    price="$39.99/mo"
+                    price="$49.99/mo"
                     sublabel="Up to 5 coaches · shared playbook · unlimited saves"
                     badge={recommendTeam ? "Most popular" : undefined}
                     badgeBg={STEEP.ink}
