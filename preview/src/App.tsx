@@ -1,6 +1,28 @@
 import { useState, useRef, useEffect, useContext, createContext, useMemo } from "react";
 import IPhoneSimulator from "./IPhoneSimulator";
 
+// ─── Native iOS bridge (StoreKit purchases + Pro entitlement) ─────────────────
+// The Swift app injects window.__pbPro / dispatches "pb-entitlement", and listens
+// for messages posted to the "playbook" handler. In a browser (no bridge) these
+// no-op and the paywall falls back to just proceeding.
+const NativeBridge = {
+  get available(): boolean {
+    return typeof window !== "undefined" &&
+      !!(window as any).webkit?.messageHandlers?.playbook;
+  },
+  post(msg: Record<string, unknown>) {
+    (window as any).webkit?.messageHandlers?.playbook?.postMessage(msg);
+  },
+  purchase(plan: string) { this.post({ type: "purchase", plan }); },
+  restore() { this.post({ type: "restore" }); },
+};
+
+function readIsPro(): boolean {
+  if (typeof window === "undefined") return false;
+  if ((window as any).__pbPro === true) return true;
+  try { return localStorage.getItem("playbook.isPro") === "1"; } catch { return false; }
+}
+
 // ─── Theme context ────────────────────────────────────────────────────────────
 type ThemeMode = "dark" | "light";
 const ThemeCtx = createContext<{ isDark:boolean; toggleTheme:()=>void }>({
@@ -4819,11 +4841,30 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
   const isFirst = stepIdx === 0;
 
   function goNext() {
-    if (step === "paywall") { onComplete(); return; }
+    if (step === "paywall") {
+      // Paid plan on a real device → trigger the native Apple purchase and wait
+      // for the result before advancing. Free plan / browser preview → proceed.
+      if (answers.plan !== "free" && NativeBridge.available) {
+        NativeBridge.purchase(answers.plan);
+        return;
+      }
+      onComplete();
+      return;
+    }
     if (stepIdx < steps.length - 1) {
       setStepIdx(stepIdx + 1);
     }
   }
+
+  // Advance once a native purchase (or restore) succeeds.
+  useEffect(() => {
+    const onResult = (e: Event) => {
+      if ((e as CustomEvent).detail?.success) onComplete();
+    };
+    window.addEventListener("pb-purchase-result", onResult as EventListener);
+    return () => window.removeEventListener("pb-purchase-result", onResult as EventListener);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function goBack() {
     if (isFirst) onBack();
@@ -5125,6 +5166,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
             <div style={{ display:"flex", justifyContent:"center", gap:14,
               marginTop:6, flexWrap:"wrap" }}>
               <button type="button"
+                onClick={() => NativeBridge.restore()}
                 style={{ background:"none", border:"none", cursor:"pointer",
                   fontSize:11, color:STEEP.graphite, padding:6,
                   fontFamily:STEEP.sans, letterSpacing:"-0.005em" }}>
