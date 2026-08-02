@@ -2924,12 +2924,13 @@ function Chip({ label, color, active, onClick }: {
 }
 
 // ─── Import a link → categorize → add to feed & playbook ──────────────────────
-function ImportLinkSheet({ onClose, onImported }:
-  { onClose: () => void; onImported: (p: UserPlayItem) => void }) {
+function ImportLinkSheet({ onClose, onImported, initialUrl }:
+  { onClose: () => void; onImported: (p: UserPlayItem) => void; initialUrl?: string }) {
   const { isDark } = useTheme();
   const T = th(isDark);
-  const [step, setStep]         = useState<"paste" | "questions" | "done">("paste");
-  const [url, setUrl]           = useState("");
+  // When a link is shared in (initialUrl), skip straight to the questions step.
+  const [step, setStep]         = useState<"paste" | "questions" | "done">(initialUrl ? "questions" : "paste");
+  const [url, setUrl]           = useState(initialUrl ?? "");
   const [title, setTitle]       = useState("");
   const [parentId, setParentId] = useState<string>("");
   const [subId, setSubId]       = useState<string>("");
@@ -5672,6 +5673,23 @@ export default function App() {
   // Merged, stable list = imports (newest first) + seeded FEED.
   const allPlaysList = useMemo(() => [...userPlays, ...FEED], [userPlays]);
 
+  // ── Shared-in link (from the iOS Share Extension) ─────────────────────────
+  // The native app fires "pb-share" (or opens with ?share=<url>) when a clip is
+  // shared into PlaySave; we open the import sheet prefilled with that link.
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const p = new URLSearchParams(window.location.search).get("share");
+      if (p) setShareUrl(p);
+    } catch { /* ignore */ }
+    const onShare = (e: Event) => {
+      const u = (e as CustomEvent).detail?.url;
+      if (u) setShareUrl(String(u));
+    };
+    window.addEventListener("pb-share", onShare as EventListener);
+    return () => window.removeEventListener("pb-share", onShare as EventListener);
+  }, []);
+
   // ── Streak state (persisted to localStorage) ──────────────────────────────
   const [streak, setStreak] = useState<StreakState>(loadStreak);
   const [pendingMilestone, setPendingMilestone] = useState<number | null>(null);
@@ -5910,6 +5928,15 @@ export default function App() {
                   }
                   {tabId && (
                     <TabBar active={screen.id} onTab={id => navigate({ id } as Screen)} />
+                  )}
+
+                  {/* Link shared in from another app (X / Instagram / Facebook) */}
+                  {shareUrl && (
+                    <ImportLinkSheet
+                      initialUrl={shareUrl}
+                      onClose={() => setShareUrl(null)}
+                      onImported={addPlay}
+                    />
                   )}
                 </div>
               </>
