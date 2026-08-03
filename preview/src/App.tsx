@@ -2924,6 +2924,60 @@ function Chip({ label, color, active, onClick }: {
 }
 
 // ─── Import a link → categorize → add to feed & playbook ──────────────────────
+// Small video preview of the clip being imported, so the user can see exactly
+// which play they're categorizing (falls back to a gradient if it can't stream).
+function ImportClipPreview({ url, platformLabel, shortUrl }:
+  { url: string; platformLabel: string; shortUrl: string }) {
+  const { isDark } = useTheme();
+  const T = th(isDark);
+  const platform = detectPlatform(url);
+  const play = useMemo(() => ({
+    id: "import-preview",
+    categoryId: "",
+    title: "",
+    platform,
+    sourceUrl: url,
+    savedAt: null as string | null,
+    liked: false,
+    views: 0,
+    addedAt: new Date(),
+    gradient: ["#1a2440", "#0d0d0f"] as string[],
+  }), [url, platform]);
+  const src = useClipPreviewStream(play as unknown as FeedPlay);
+
+  return (
+    <div style={{ margin:"14px 20px 0" }}>
+      <div style={{ position:"relative", width:"100%", height:190, borderRadius:14,
+        overflow:"hidden", background:"#000",
+        border:`1px solid ${isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)"}` }}>
+        <PlayMediaBackdrop play={play as unknown as FeedPlay} />
+        {src && (
+          <video src={src} muted loop playsInline autoPlay
+            style={{ position:"absolute", inset:0, width:"100%", height:"100%",
+              objectFit:"contain" }} />
+        )}
+        {/* Platform badge overlay */}
+        <div style={{ position:"absolute", top:8, left:8, display:"flex", alignItems:"center",
+          gap:6, padding:"4px 9px", borderRadius:99,
+          background:"rgba(0,0,0,0.55)", backdropFilter:"blur(6px)" }}>
+          <div style={{ width:14, height:14, borderRadius:"50%", background:"#2fae6a",
+            display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <svg width="8" height="6" viewBox="0 0 13 11" fill="none">
+              <path d="M1 5.5l3.5 3.5L12 1.5" stroke="#fff" strokeWidth="2.6"
+                strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <span style={{ fontSize:11, fontWeight:600, color:"#fff" }}>{platformLabel}</span>
+        </div>
+      </div>
+      <div style={{ fontSize:11, color: T.textFaint, marginTop:6, paddingLeft:2,
+        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+        {shortUrl}
+      </div>
+    </div>
+  );
+}
+
 function ImportLinkSheet({ onClose, onImported, initialUrl }:
   { onClose: () => void; onImported: (p: UserPlayItem) => void; initialUrl?: string }) {
   const { isDark } = useTheme();
@@ -3126,22 +3180,8 @@ function ImportLinkSheet({ onClose, onImported, initialUrl }:
               </div>
             </div>
 
-            {/* Confirmed-link chip */}
-            <div style={{ margin:"14px 20px 0", display:"flex", alignItems:"center", gap:8,
-              padding:"8px 12px", borderRadius:10, background: inputBg,
-              border:`1px solid ${inputBdr}` }}>
-              <div style={{ width:16, height:16, borderRadius:"50%", flexShrink:0,
-                background: OK, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                <svg width="9" height="7" viewBox="0 0 13 11" fill="none">
-                  <path d="M1 5.5l3.5 3.5L12 1.5" stroke="#fff" strokeWidth="2.4"
-                    strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </div>
-              <span style={{ fontSize:12, color: T.textSec, overflow:"hidden",
-                textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                {platformLabel} · {shortUrl}
-              </span>
-            </div>
+            {/* Video preview of the clip being categorized */}
+            <ImportClipPreview url={url} platformLabel={platformLabel} shortUrl={shortUrl} />
 
             <div style={{ padding:"16px 20px 4px", display:"flex",
               flexDirection:"column", gap:14 }}>
