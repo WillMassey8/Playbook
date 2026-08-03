@@ -3122,7 +3122,7 @@ function ImportLinkSheet({ onClose, onImported, initialUrl }:
               <div style={{ fontFamily: STEEP.serif, fontSize:18, fontWeight:500,
                 color: T.text, letterSpacing:"-0.01em" }}>Categorize this play</div>
               <div style={{ fontSize:13, color: T.textFaint, marginTop:3 }}>
-                Three quick questions to file it in your playbook.
+                Pick a category to file it in your playbook.
               </div>
             </div>
 
@@ -3145,15 +3145,9 @@ function ImportLinkSheet({ onClose, onImported, initialUrl }:
 
             <div style={{ padding:"16px 20px 4px", display:"flex",
               flexDirection:"column", gap:14 }}>
-              {/* Q1 — name */}
+              {/* Q1 — category */}
               <div>
-                <div style={labelStyle}>1 · NAME THIS PLAY <span style={{ opacity:0.6 }}>(optional)</span></div>
-                <input value={title} onChange={e => setTitle(e.target.value)}
-                  placeholder="e.g. Mesh concept vs. Cover 3" style={fieldStyle} />
-              </div>
-              {/* Q2 — category */}
-              <div>
-                <div style={labelStyle}>2 · CATEGORY</div>
+                <div style={labelStyle}>1 · CATEGORY</div>
                 <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
                   {parents.map(p => (
                     <Chip key={p.id}
@@ -3168,7 +3162,7 @@ function ImportLinkSheet({ onClose, onImported, initialUrl }:
               {/* Q3 — sub-category (when the category has one) */}
               {parentId !== "" && subs.length > 0 && (
                 <div>
-                  <div style={labelStyle}>3 · SUB-CATEGORY <span style={{ opacity:0.6 }}>(optional)</span></div>
+                  <div style={labelStyle}>2 · SUB-CATEGORY <span style={{ opacity:0.6 }}>(optional)</span></div>
                   <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
                     <Chip
                       label={`All ${parents.find(p => p.id === parentId)?.name}`}
