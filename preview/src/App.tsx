@@ -2978,8 +2978,9 @@ function ImportClipPreview({ url, platformLabel, shortUrl }:
   );
 }
 
-function ImportLinkSheet({ onClose, onImported, initialUrl }:
-  { onClose: () => void; onImported: (p: UserPlayItem) => void; initialUrl?: string }) {
+function ImportLinkSheet({ onClose, onImported, initialUrl, mandatory }:
+  { onClose: () => void; onImported: (p: UserPlayItem) => void;
+    initialUrl?: string; mandatory?: boolean }) {
   const { isDark } = useTheme();
   const T = th(isDark);
   // When a link is shared in (initialUrl), skip straight to the questions step.
@@ -3062,7 +3063,7 @@ function ImportLinkSheet({ onClose, onImported, initialUrl }:
 
   return (
     <>
-      <div onClick={onClose} style={{ position:"absolute", inset:0,
+      <div onClick={mandatory ? undefined : onClose} style={{ position:"absolute", inset:0,
         background: isDark ? "rgba(0,0,0,0.55)" : "rgba(23,25,28,0.35)",
         backdropFilter:"blur(4px)", zIndex:60 }} />
 
@@ -3079,8 +3080,8 @@ function ImportLinkSheet({ onClose, onImported, initialUrl }:
           <div style={{ width:32, height:4, borderRadius:99, background: handleCol }} />
         </div>
 
-        {/* Explicit close — the backdrop also closes on tap */}
-        {step !== "done" && (
+        {/* Explicit close — hidden for mandatory (share) sheets */}
+        {step !== "done" && !mandatory && (
           <button onClick={onClose} aria-label="Close"
             style={{ position:"absolute", top:14, right:16, width:30, height:30,
               borderRadius:"50%", border:"none", cursor:"pointer", zIndex:2,
@@ -3163,16 +3164,18 @@ function ImportLinkSheet({ onClose, onImported, initialUrl }:
         {step === "questions" && (
           <>
             <div style={{ padding:"6px 20px 14px", borderBottom:`1px solid ${T.divider}` }}>
-              <button onClick={() => setStep("paste")}
-                style={{ background:"none", border:"none", cursor:"pointer", padding:"0 0 8px",
-                  display:"flex", alignItems:"center", gap:6, color: T.textSec, fontSize:13,
-                  fontFamily: STEEP.sans }}>
-                <svg width="6" height="10" viewBox="0 0 6 10" fill="none">
-                  <path d="M5 1L1 5l4 4" stroke="currentColor" strokeWidth="1.5"
-                    strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                Back
-              </button>
+              {!mandatory && (
+                <button onClick={() => setStep("paste")}
+                  style={{ background:"none", border:"none", cursor:"pointer", padding:"0 0 8px",
+                    display:"flex", alignItems:"center", gap:6, color: T.textSec, fontSize:13,
+                    fontFamily: STEEP.sans }}>
+                  <svg width="6" height="10" viewBox="0 0 6 10" fill="none">
+                    <path d="M5 1L1 5l4 4" stroke="currentColor" strokeWidth="1.5"
+                      strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  Back
+                </button>
+              )}
               <div style={{ fontFamily: STEEP.serif, fontSize:18, fontWeight:500,
                 color: T.text, letterSpacing:"-0.01em" }}>Categorize this play</div>
               <div style={{ fontSize:13, color: T.textFaint, marginTop:3 }}>
@@ -5707,21 +5710,32 @@ export default function App() {
   // Merged, stable list = imports (newest first) + seeded FEED.
   const allPlaysList = useMemo(() => [...userPlays, ...FEED], [userPlays]);
 
-  // ── Shared-in link (from the iOS Share Extension) ─────────────────────────
-  // The native app fires "pb-share" (or opens with ?share=<url>) when a clip is
-  // shared into PlaySave; we open the import sheet prefilled with that link.
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  // ── Shared-in links queue (from the iOS Share Extension) ──────────────────
+  // The native app owns the authoritative queue (persisted in the App Group) and
+  // pushes it via "pb-share-queue". We categorize the first one; when saved we
+  // tell native to drop it (shareHandled). Nothing is lost across app restarts.
+  const [shareQueue, setShareQueue] = useState<string[]>([]);
   useEffect(() => {
     try {
       const p = new URLSearchParams(window.location.search).get("share");
-      if (p) setShareUrl(p);
+      if (p) setShareQueue(q => (q.includes(p) ? q : [...q, p]));
     } catch { /* ignore */ }
-    const onShare = (e: Event) => {
-      const u = (e as CustomEvent).detail?.url;
-      if (u) setShareUrl(String(u));
+    // Authoritative queue from native — replaces our copy.
+    const onQueue = (e: Event) => {
+      const urls = (e as CustomEvent).detail?.urls;
+      if (Array.isArray(urls)) setShareQueue(urls.map(String));
     };
-    window.addEventListener("pb-share", onShare as EventListener);
-    return () => window.removeEventListener("pb-share", onShare as EventListener);
+    // Legacy single-share event — append.
+    const onSingle = (e: Event) => {
+      const u = (e as CustomEvent).detail?.url;
+      if (u) setShareQueue(q => (q.includes(String(u)) ? q : [...q, String(u)]));
+    };
+    window.addEventListener("pb-share-queue", onQueue as EventListener);
+    window.addEventListener("pb-share", onSingle as EventListener);
+    return () => {
+      window.removeEventListener("pb-share-queue", onQueue as EventListener);
+      window.removeEventListener("pb-share", onSingle as EventListener);
+    };
   }, []);
 
   // ── Streak state (persisted to localStorage) ──────────────────────────────
@@ -5964,12 +5978,21 @@ export default function App() {
                     <TabBar active={screen.id} onTab={id => navigate({ id } as Screen)} />
                   )}
 
-                  {/* Link shared in from another app (X / Instagram / Facebook) */}
-                  {shareUrl && (
+                  {/* Categorize the next link shared in from another app.
+                      Mandatory: it can't be dismissed until it's filed, and it
+                      persists across restarts via the native queue. */}
+                  {shareQueue[0] && (
                     <ImportLinkSheet
-                      initialUrl={shareUrl}
-                      onClose={() => setShareUrl(null)}
-                      onImported={addPlay}
+                      key={shareQueue[0]}
+                      initialUrl={shareQueue[0]}
+                      mandatory
+                      onImported={(p) => {
+                        const url = shareQueue[0];
+                        addPlay(p);
+                        NativeBridge.post({ type: "shareHandled", url });
+                        setShareQueue(q => q.filter(u => u !== url));
+                      }}
+                      onClose={() => {}}
                     />
                   )}
                 </div>
