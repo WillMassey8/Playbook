@@ -2943,7 +2943,9 @@ function ImportClipPreview({ url, platformLabel, shortUrl }:
     addedAt: new Date(),
     gradient: ["#1a2440", "#0d0d0f"] as string[],
   }), [url, platform]);
-  const src = useClipPreviewStream(play as unknown as FeedPlay);
+  // Same resolve + play path as the feed so the clip actually plays here.
+  const src = usePlaybackStream(play as unknown as FeedPlay, true);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   return (
     <div style={{ margin:"14px 20px 0" }}>
@@ -2952,9 +2954,7 @@ function ImportClipPreview({ url, platformLabel, shortUrl }:
         border:`1px solid ${isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)"}` }}>
         <PlayMediaBackdrop play={play as unknown as FeedPlay} />
         {src && (
-          <video src={src} muted loop playsInline autoPlay
-            style={{ position:"absolute", inset:0, width:"100%", height:"100%",
-              objectFit:"contain" }} />
+          <NativeClipVideo src={src} isActive={true} paused={false} videoRef={videoRef} />
         )}
         {/* Platform badge overlay */}
         <div style={{ position:"absolute", top:8, left:8, display:"flex", alignItems:"center",
