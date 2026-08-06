@@ -1,7 +1,11 @@
 // Vercel Edge Function — relays an X video file so the browser can play it.
 // X's CDN refuses `<video>` playback from other origins, so the stream is
-// served through this origin instead. Range headers are forwarded so seeking
-// keeps working; nothing is stored.
+// served through this origin instead.
+//
+// We buffer the upstream bytes and return them with an explicit Content-Length.
+// WKWebView / AVFoundation (the iOS video engine) will NOT play an mp4 response
+// that lacks Content-Length, and a streamed/chunked passthrough drops it — which
+// is why relayed clips wouldn't play in the app. Buffering keeps it well-formed.
 export const config = { runtime: "edge" };
 
 export default async function handler(req: Request): Promise<Response> {
@@ -20,15 +24,18 @@ export default async function handler(req: Request): Promise<Response> {
       },
     });
 
+    const body = await upstream.arrayBuffer();
+
     const headers = new Headers();
-    for (const h of ["content-type", "content-length", "content-range", "accept-ranges"]) {
-      const v = upstream.headers.get(h);
-      if (v) headers.set(h, v);
-    }
-    headers.set("cache-control", "public, max-age=3600");
+    headers.set("content-type", upstream.headers.get("content-type") || "video/mp4");
+    headers.set("content-length", String(body.byteLength));
+    headers.set("accept-ranges", "bytes");
+    const contentRange = upstream.headers.get("content-range");
+    if (contentRange) headers.set("content-range", contentRange);
+    headers.set("cache-control", "public, max-age=86400");
     headers.set("access-control-allow-origin", "*");
 
-    return new Response(upstream.body, { status: upstream.status, headers });
+    return new Response(body, { status: upstream.status, headers });
   } catch {
     return new Response("upstream failed", { status: 502 });
   }
