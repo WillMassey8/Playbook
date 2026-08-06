@@ -1243,6 +1243,18 @@ function FeedCard({ play, isActive, warm = false }:
 
       <PlayMediaBackdrop play={play as FeedPlay} />
 
+      {/* TEMP DEBUG: shows the active card's playback resolution state. */}
+      {isActive && (
+        <div style={{ position:"absolute", top:96, left:8, right:8, zIndex:50,
+          background:"rgba(200,0,0,0.85)", color:"#fff", fontSize:10, lineHeight:1.35,
+          padding:"5px 7px", borderRadius:6, fontFamily:"monospace",
+          pointerEvents:"none", wordBreak:"break-all" }}>
+          plat:{play.platform} · {playbackSrc
+            ? `src:…${String(playbackSrc).slice(-46)}`
+            : (streamTimedOut ? "unresolved (timeout)" : "resolving…")}
+        </div>
+      )}
+
       {/* Streams from X CDN at view time — muted autoplay, not stored */}
       {playbackSrc && (
         <NativeClipVideo
