@@ -398,6 +398,23 @@ function detectPlatform(url: string): "twitter" | "instagram" {
   return "instagram"; // instagram + any other link uses the open-source card behavior
 }
 
+/** Build a play from a clip categorized in the Share Extension. */
+function makeCategorizedPlay(url: string, categoryId: string, categoryName?: string): UserPlayItem {
+  const catName = categoryName || CATEGORIES.find(c => c.id === categoryId)?.name || "Playbook";
+  return {
+    id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    categoryId,
+    title: `${catName} clip`,
+    platform: detectPlatform(url),
+    sourceUrl: url,
+    savedAt: catName,
+    liked: false,
+    views: 0,
+    addedAt: new Date(),
+    gradient: ["#1a2440", "#0d0d0f"],
+  };
+}
+
 const PlaysCtx = createContext<{ plays: UserPlayItem[]; addPlay: (p: UserPlayItem) => void }>({
   plays: FEED, addPlay: () => {},
 });
@@ -5710,32 +5727,25 @@ export default function App() {
   // Merged, stable list = imports (newest first) + seeded FEED.
   const allPlaysList = useMemo(() => [...userPlays, ...FEED], [userPlays]);
 
-  // ── Shared-in links queue (from the iOS Share Extension) ──────────────────
-  // The native app owns the authoritative queue (persisted in the App Group) and
-  // pushes it via "pb-share-queue". We categorize the first one; when saved we
-  // tell native to drop it (shareHandled). Nothing is lost across app restarts.
-  const [shareQueue, setShareQueue] = useState<string[]>([]);
+  // ── Clips categorized in the Share Extension (from the App Group) ─────────
+  // The native app pushes already-categorized clips via "pb-add-categorized".
+  // We add them to the feed/playbook and confirm so native can drop them.
   useEffect(() => {
-    try {
-      const p = new URLSearchParams(window.location.search).get("share");
-      if (p) setShareQueue(q => (q.includes(p) ? q : [...q, p]));
-    } catch { /* ignore */ }
-    // Authoritative queue from native — replaces our copy.
-    const onQueue = (e: Event) => {
-      const urls = (e as CustomEvent).detail?.urls;
-      if (Array.isArray(urls)) setShareQueue(urls.map(String));
+    const onCategorized = (e: Event) => {
+      const items = (e as CustomEvent).detail?.items;
+      if (!Array.isArray(items)) return;
+      const ingested: string[] = [];
+      items.forEach((it: { url?: string; categoryId?: string; categoryName?: string }) => {
+        if (it && typeof it.url === "string" && typeof it.categoryId === "string") {
+          addPlay(makeCategorizedPlay(it.url, it.categoryId, it.categoryName));
+          ingested.push(it.url);
+        }
+      });
+      if (ingested.length) NativeBridge.post({ type: "categorizedIngested", urls: ingested });
     };
-    // Legacy single-share event — append.
-    const onSingle = (e: Event) => {
-      const u = (e as CustomEvent).detail?.url;
-      if (u) setShareQueue(q => (q.includes(String(u)) ? q : [...q, String(u)]));
-    };
-    window.addEventListener("pb-share-queue", onQueue as EventListener);
-    window.addEventListener("pb-share", onSingle as EventListener);
-    return () => {
-      window.removeEventListener("pb-share-queue", onQueue as EventListener);
-      window.removeEventListener("pb-share", onSingle as EventListener);
-    };
+    window.addEventListener("pb-add-categorized", onCategorized as EventListener);
+    return () => window.removeEventListener("pb-add-categorized", onCategorized as EventListener);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Streak state (persisted to localStorage) ──────────────────────────────
@@ -5976,24 +5986,6 @@ export default function App() {
                   }
                   {tabId && (
                     <TabBar active={screen.id} onTab={id => navigate({ id } as Screen)} />
-                  )}
-
-                  {/* Categorize the next link shared in from another app.
-                      Mandatory: it can't be dismissed until it's filed, and it
-                      persists across restarts via the native queue. */}
-                  {shareQueue[0] && (
-                    <ImportLinkSheet
-                      key={shareQueue[0]}
-                      initialUrl={shareQueue[0]}
-                      mandatory
-                      onImported={(p) => {
-                        const url = shareQueue[0];
-                        addPlay(p);
-                        NativeBridge.post({ type: "shareHandled", url });
-                        setShareQueue(q => q.filter(u => u !== url));
-                      }}
-                      onClose={() => {}}
-                    />
                   )}
                 </div>
               </>
