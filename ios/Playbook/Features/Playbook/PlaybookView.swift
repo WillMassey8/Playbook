@@ -70,7 +70,7 @@ struct PlaybookView: View {
         ScrollView {
             LazyVStack(spacing: Spacing.sm) {
                 ForEach(0..<6, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: Radius.md)
+                    PBCorners.card()
                         .fill(Color.pbCard)
                         .frame(height: 96)
                         .shimmer()
@@ -92,7 +92,7 @@ struct CategoryRow: View {
     var body: some View {
         HStack(spacing: Spacing.md) {
             // Color accent bar
-            RoundedRectangle(cornerRadius: 3)
+            PBCorners.fixed(3)
                 .fill(category.accentColor)
                 .frame(width: 4, height: 56)
 
@@ -122,7 +122,7 @@ struct CategoryRow: View {
             if !previewPlays.isEmpty {
                 HStack(spacing: -12) {
                     ForEach(previewPlays.prefix(3)) { play in
-                        RoundedRectangle(cornerRadius: 6)
+                        PBCorners.fixed(6)
                             .fill(category.accentColor.opacity(0.25))
                             .frame(width: 36, height: 52)
                             .overlay(
@@ -130,7 +130,7 @@ struct CategoryRow: View {
                                     .font(.system(size: 10))
                                     .foregroundStyle(category.accentColor.opacity(0.7))
                             )
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .clipShape(PBCorners.fixed(6))
                     }
                 }
             }
@@ -140,8 +140,7 @@ struct CategoryRow: View {
                 .foregroundStyle(.white.opacity(0.3))
         }
         .padding(Spacing.md)
-        .background(Color.pbCard)
-        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+        .pbCardBackground()
     }
 }
 
@@ -255,8 +254,7 @@ struct CategoryDetailView: View {
         }
         .padding(.horizontal, Spacing.md)
         .padding(.vertical, 14)
-        .background(Color.pbCard)
-        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+        .pbCardBackground()
         .padding(.horizontal, Spacing.md)
     }
 

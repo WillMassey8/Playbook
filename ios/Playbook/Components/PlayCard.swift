@@ -47,7 +47,7 @@ struct PlayCard: View {
             }
         }
         .aspectRatio(9/16, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+        .pbClipCard()
     }
 
     @ViewBuilder
@@ -78,7 +78,7 @@ struct PlayCard: View {
 
 struct PlayCardSkeleton: View {
     var body: some View {
-        RoundedRectangle(cornerRadius: Radius.md)
+        PBCorners.card()
             .fill(Color.pbCard)
             .aspectRatio(9/16, contentMode: .fit)
             .shimmer()

@@ -52,7 +52,13 @@ struct CategorizeShareView: View {
 
     var body: some View {
         ZStack {
-            Color(red: 0.04, green: 0.04, blue: 0.06).ignoresSafeArea()
+            // Notes-style: fixed top corners, concentric bottom relative to device.
+            ConcentricRectangle(
+                uniformTopCorners: .fixed(24),
+                uniformBottomCorners: .concentric(minimum: 16)
+            )
+            .fill(Color(red: 0.04, green: 0.04, blue: 0.06))
+            .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 handle
@@ -61,6 +67,12 @@ struct CategorizeShareView: View {
                 content
             }
         }
+        .containerShape(
+            ConcentricRectangle(
+                uniformTopCorners: .fixed(24),
+                uniformBottomCorners: .concentric(minimum: 16)
+            )
+        )
         .preferredColorScheme(.dark)
         .task { await loadCategories() }
     }
@@ -68,7 +80,7 @@ struct CategorizeShareView: View {
     // MARK: - Sub-views
 
     private var handle: some View {
-        RoundedRectangle(cornerRadius: 3)
+        ConcentricRectangle(corners: .fixed(3), isUniform: true)
             .fill(Color.white.opacity(0.2))
             .frame(width: 36, height: 5)
             .padding(.top, 10)
@@ -167,10 +179,13 @@ struct CategorizeShareView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
                         .background(
-                            RoundedRectangle(cornerRadius: 14)
-                                .fill(canSubmit
-                                    ? Color(red: 0.2, green: 0.84, blue: 0.49)
-                                    : Color.white.opacity(0.07))
+                            ConcentricRectangle(
+                                corners: .concentric(minimum: 14),
+                                isUniform: true
+                            )
+                            .fill(canSubmit
+                                ? Color(red: 0.2, green: 0.84, blue: 0.49)
+                                : Color.white.opacity(0.07))
                         )
                 }
                 .disabled(!canSubmit)
@@ -270,12 +285,12 @@ struct CategorizeShareView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 9)
                 .background(
-                    RoundedRectangle(cornerRadius: 99)
+                    Capsule()
                         .fill(isSelected
                             ? Color(red: 0.2, green: 0.84, blue: 0.49)
                             : Color.white.opacity(0.08))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 99)
+                            Capsule()
                                 .stroke(
                                     isSelected ? Color.clear : Color.white.opacity(0.12),
                                     lineWidth: 1

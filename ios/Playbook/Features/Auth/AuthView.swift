@@ -68,13 +68,12 @@ struct AuthView: View {
                                         ? Color.pbGreen
                                         : Color.clear
                                     )
-                                    .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+                                    .clipShape(PBCorners.compact())
                             }
                         }
                     }
                     .padding(4)
-                    .background(Color.pbCard)
-                    .clipShape(RoundedRectangle(cornerRadius: Radius.sm + 4))
+                    .pbCardBackground(minimum: Radius.sm + 4)
                     .padding(.horizontal, Spacing.md)
 
                     // Fields
@@ -88,8 +87,7 @@ struct AuthView: View {
                             .submitLabel(.next)
                             .onSubmit { focusedField = .password }
                             .padding()
-                            .background(Color.pbCard)
-                            .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+                            .pbCardBackground()
                             .foregroundStyle(.white)
 
                         SecureField("Password (6+ characters)", text: $vm.password)
@@ -98,8 +96,7 @@ struct AuthView: View {
                             .submitLabel(.done)
                             .onSubmit { Task { await vm.submit() } }
                             .padding()
-                            .background(Color.pbCard)
-                            .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+                            .pbCardBackground()
                             .foregroundStyle(.white)
 
                         if let error = vm.errorMessage {
@@ -111,8 +108,7 @@ struct AuthView: View {
                             .foregroundStyle(.red)
                             .padding(Spacing.sm)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.red.opacity(0.1))
-                            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+                            .pbCompactBackground(Color.red.opacity(0.1))
                         }
 
                         Button(vm.mode == .signIn ? "Sign In" : "Create Account") {

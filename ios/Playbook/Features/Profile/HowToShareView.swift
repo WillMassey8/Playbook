@@ -40,14 +40,17 @@ struct HowToShareView: View {
                             }
                             .padding(Spacing.md)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.pbCard)
-                            .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+                            .pbCardBackground()
                         }
                     }
                 }
                 .padding(Spacing.lg)
             }
-            .background(Color.pbBg.ignoresSafeArea())
+            .background {
+                PBCorners.sheet()
+                    .fill(Color.pbBg)
+                    .ignoresSafeArea()
+            }
             .navigationTitle("How to Share")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -77,10 +77,15 @@ struct MainTabView: View {
                 }
         }
         .tint(Color.pbGreen)
+        // Let nested ConcentricRectangle surfaces resolve against the window.
+        .containerShape(PBCorners.display)
         .sheet(isPresented: $showAddClip, onDismiss: { pendingSharedURL = nil }) {
             AddClipView(prefillURL: pendingSharedURL) {
                 pendingSharedURL = nil
             }
+            // System sheets already use concentric corners on iOS 26;
+            // give nested controls a matching container.
+            .containerShape(PBCorners.sheet())
         }
     }
 }
