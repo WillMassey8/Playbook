@@ -4490,17 +4490,24 @@ function GlowButton({ label, onPress, accent = false, disabled = false }:
 }
 
 // ─── ONBOARDING ───────────────────────────────────────────────────────────────
+// Quiz → show them their playbook → paywall. Keep copy plain. Grown men.
 type OnboardingUserType = "coach" | "fan";
 type OnboardingLevel = "hs" | "college" | "youth" | "pro";
+type OnboardingRole = "head" | "oc" | "dc" | "position" | "analyst";
+// Why they save: cool plays they want to run / install — not opponent scout.
+type OnboardingFocus = "install" | "later" | "show_guys";
 type OnboardingStaff = "solo" | "staff" | "large";
 type OnboardingPain =
+  | "like_nosave" | "save_noutilize" | "screenshots_chat" | "install_gap"
   | "save_forget" | "cant_find" | "group_chat_lost" | "scroll_again";
 type OnboardingVolume = "light" | "medium" | "heavy" | "constant";
-type OnboardingPlan = "annual" | "monthly" | "free" | "team5" | "team10";
+type OnboardingPlan = "annual" | "weekly" | "team5" | "team10";
 
 type OnboardingAnswers = {
   userType: OnboardingUserType | null;
   level: OnboardingLevel | null;
+  role: OnboardingRole | null;
+  focus: OnboardingFocus | null;
   staff: OnboardingStaff | null;
   pain: OnboardingPain | null;
   volume: OnboardingVolume | null;
@@ -4508,18 +4515,187 @@ type OnboardingAnswers = {
 };
 
 type OnboardingStepId =
-  | "who" | "level" | "staff" | "pain" | "volume"
+  | "who" | "level" | "role" | "focus" | "value" | "staff"
+  | "pain" | "volume" | "commit"
   | "building" | "preview" | "paywall";
 
-// Coach: 8 steps. Fan: 6 steps (skip level + staff).
 function onboardingSteps(userType: OnboardingUserType | null): OnboardingStepId[] {
   if (userType === "coach") {
-    return ["who", "level", "staff", "pain", "volume", "building", "preview", "paywall"];
+    return [
+      "who", "level", "role", "focus", "value", "staff",
+      "pain", "volume", "commit", "building", "preview", "paywall",
+    ];
   }
   if (userType === "fan") {
-    return ["who", "pain", "volume", "building", "preview", "paywall"];
+    return ["who", "value", "pain", "volume", "commit", "building", "preview", "paywall"];
   }
   return ["who"];
+}
+
+const COACH_ROLES: { id: OnboardingRole; label: string; icon: string }[] = [
+  { id: "head",     label: "Head coach",              icon: "military_tech" },
+  { id: "oc",       label: "Offensive coordinator",   icon: "sports_football" },
+  { id: "dc",       label: "Defensive coordinator",   icon: "shield" },
+  { id: "position", label: "Position coach",          icon: "person" },
+  { id: "analyst",  label: "Analyst",                 icon: "analytics" },
+];
+
+const COACH_FOCUSES: { id: OnboardingFocus; label: string; icon: string }[] = [
+  { id: "install",   label: "I want to install it.",                 icon: "assignment_turned_in" },
+  { id: "later",     label: "It looked good. I might run it later.", icon: "bookmark" },
+  { id: "show_guys", label: "I want to show it to my players.",      icon: "groups" },
+];
+
+const LEVEL_LABEL: Record<OnboardingLevel, string> = {
+  hs: "High school", college: "College", youth: "Youth", pro: "Pro",
+};
+
+const ROLE_LABEL: Record<OnboardingRole, string> = {
+  head: "Head coach",
+  oc: "Offensive coordinator",
+  dc: "Defensive coordinator",
+  position: "Position coach",
+  analyst: "Analyst",
+};
+
+type PlaybookBlueprint = {
+  identityLine: string;
+  folders: { name: string; subs: string[] }[];
+  valueLines: string[];
+  shareLine: string;
+};
+
+function coachPlaybook(answers: OnboardingAnswers): PlaybookBlueprint {
+  const level = answers.level ? LEVEL_LABEL[answers.level] : "Football";
+  const role = answers.role ? ROLE_LABEL[answers.role] : "Coach";
+  const identityLine = `${level} · ${role}`;
+
+  const byRole: Record<OnboardingRole, { name: string; subs: string[] }[]> = {
+    head: [
+      { name: "Offense",  subs: ["Pass", "Run", "Red zone"] },
+      { name: "Defense",  subs: ["Fronts", "Coverage", "Pressure"] },
+      { name: "Specials", subs: ["Returns", "Protection"] },
+    ],
+    oc: [
+      { name: "Pass",        subs: ["RPO", "Dropback", "Screens"] },
+      { name: "Run",         subs: ["Inside zone", "Gap", "Toss"] },
+      { name: "Situational", subs: ["3rd down", "Red zone", "2-minute"] },
+    ],
+    dc: [
+      { name: "Fronts",   subs: ["Odd", "Even", "Okie"] },
+      { name: "Coverage", subs: ["Man", "Zone", "Match"] },
+      { name: "Pressure", subs: ["Sim", "Blitz", "Games"] },
+    ],
+    position: [
+      { name: "My room",  subs: ["Technique", "Drills", "Examples"] },
+      { name: "Install",  subs: ["This week", "Must-haves"] },
+      { name: "Ideas",    subs: ["Liked", "Might run"] },
+    ],
+    analyst: [
+      { name: "Ideas",   subs: ["Offense", "Defense", "Situational"] },
+      { name: "Install", subs: ["This week", "Hold for later"] },
+      { name: "Cutups",  subs: ["Self", "Concepts"] },
+    ],
+  };
+
+  const folders = [...((answers.role && byRole[answers.role]) || byRole.head)].map(f => ({
+    name: f.name,
+    subs: [...f.subs],
+  }));
+
+  const valueByFocus: Record<OnboardingFocus, string[]> = {
+    install: [
+      "Save a play once, and it goes into Install—not your camera roll.",
+      "Pull it up before practice without digging through chats.",
+      "Your staff can open the same folder you just filled.",
+    ],
+    later: [
+      "Keep the plays you like without losing them in screenshots.",
+      "Come back when you are ready to put one in the book.",
+      "Organized by concept, not by which app you saw it in.",
+    ],
+    show_guys: [
+      "Send one clean clip instead of a chat dump.",
+      "Label it so your room knows what they are looking at.",
+      "Reuse good examples next season without hunting through photos.",
+    ],
+  };
+
+  const valueLines = answers.focus
+    ? valueByFocus[answers.focus]
+    : [
+        "Share from X or Instagram, and it lands in your book.",
+        "Folders that match how you coach.",
+        "One playbook for you and your staff.",
+      ];
+
+  const shareLine =
+    answers.focus === "install"
+      ? "Share a play from X or Instagram, then drop it into this week's install."
+      : answers.focus === "show_guys"
+      ? "Share a play, then send it to your players from here."
+      : "Share a play from X or Instagram, and it lands in your playbook.";
+
+  return { identityLine, folders, valueLines, shareLine };
+}
+
+function fanPlaybook(): PlaybookBlueprint {
+  return {
+    identityLine: "Football fan",
+    folders: [
+      { name: "My team",   subs: ["Offense", "Defense", "Highlights"] },
+      { name: "Favorites", subs: ["Rewatch", "Send to friends"] },
+      { name: "Ideas",     subs: ["College", "NFL"] },
+    ],
+    valueLines: [
+      "Save from X or Instagram in one tap.",
+      "Stop losing clips in your camera roll.",
+      "Find them later without scrolling for hours.",
+    ],
+    shareLine: "Share a clip, and it lands in your playbook.",
+  };
+}
+
+const COACH_PAINS: { id: OnboardingPain; label: string; icon: string }[] = [
+  { id: "like_nosave",      label: "I like a lot of plays and never save them.",           icon: "thumb_up" },
+  { id: "save_noutilize",   label: "I save them and never look at them again.",            icon: "bookmark_added" },
+  { id: "screenshots_chat", label: "They end up in screenshots and group chats.",          icon: "photo_library" },
+  { id: "install_gap",      label: "I plan to install it and never follow through.",       icon: "event_busy" },
+];
+
+const FAN_PAINS: { id: OnboardingPain; label: string; icon: string }[] = [
+  { id: "save_forget",     label: "I save clips and never go back to them.",               icon: "bookmark_added" },
+  { id: "cant_find",       label: "I saved it somewhere and cannot find it.",              icon: "search_off" },
+  { id: "group_chat_lost", label: "They get buried in a group chat.",                      icon: "forum" },
+  { id: "scroll_again",    label: "I end up scrolling X looking for it again.",            icon: "replay" },
+];
+
+function painMirror(pain: OnboardingPain | null, userType: OnboardingUserType | null): string {
+  switch (pain) {
+    case "like_nosave":      return "Save the plays you actually like.";
+    case "save_noutilize":   return "A playbook you will actually open.";
+    case "screenshots_chat": return "Out of your camera roll, into a playbook.";
+    case "install_gap":      return "Save it, then install it.";
+    case "save_forget":      return "Keep the clips you save.";
+    case "cant_find":        return "Find a play when you need it.";
+    case "group_chat_lost":  return "Stop losing clips in group chats.";
+    case "scroll_again":     return "Stop hunting for that clip again.";
+    default:
+      return userType === "fan" ? "Your football clips, in one place." : "Your plays, in one place.";
+  }
+}
+
+function painPreviewLine(pain: OnboardingPain): string {
+  switch (pain) {
+    case "like_nosave":      return "Like it on X, then save it here in one tap.";
+    case "save_noutilize":   return "Saved plays live in folders you will open again.";
+    case "screenshots_chat": return "One playbook instead of screenshots and chats.";
+    case "install_gap":      return "Clips ready when you are putting in install.";
+    case "save_forget":      return "Your saves stay where you can find them.";
+    case "cant_find":        return "Find a play without digging around.";
+    case "group_chat_lost":  return "Not buried in a chat.";
+    case "scroll_again":     return "You will not have to hunt on X again.";
+  }
 }
 
 // Estimate monthly clip volume from their answer (used on personalized preview)
@@ -4533,24 +4709,128 @@ function estimateMonthlyClips(v: OnboardingVolume | null): number {
   }
 }
 
+/** Turn raw answers into a short profile that sounds like we know this coach. */
+function personalCommitCard(answers: OnboardingAnswers): {
+  title: string;
+  body: string;
+  lines: string[];
+} {
+  const monthly = estimateMonthlyClips(answers.volume);
+  const yearly = monthly * 12;
+  const book = answers.userType === "fan" ? fanPlaybook() : coachPlaybook(answers);
+  const folders = book.folders.map(f => f.name).slice(0, 3);
+
+  if (answers.userType === "fan") {
+    const habit =
+      answers.pain === "cant_find" ? "and then cannot find them when it matters"
+      : answers.pain === "group_chat_lost" ? "and they disappear into group chats"
+      : answers.pain === "scroll_again" ? "and end up hunting for them on X again"
+      : "and rarely go back to them";
+    return {
+      title: "Built for how you watch football.",
+      body: `You save clips ${habit}. At your pace, that is about ${yearly.toLocaleString()} plays a year that should live in one place—not your camera roll.`,
+      lines: [
+        `Your folders: ${folders.join(", ")}.`,
+        "Share from X or Instagram, and it lands here.",
+        "Find any clip without scrolling for it again.",
+      ],
+    };
+  }
+
+  const level = answers.level ? LEVEL_LABEL[answers.level].toLowerCase() : "football";
+  const roleShort: Record<OnboardingRole, string> = {
+    head: "head coach",
+    oc: "offensive coordinator",
+    dc: "defensive coordinator",
+    position: "position coach",
+    analyst: "analyst",
+  };
+  const role = answers.role ? roleShort[answers.role] : "coach";
+
+  const why =
+    answers.focus === "install" ? "you want to install them"
+    : answers.focus === "show_guys" ? "you want to show them to your players"
+    : "they look good and you might run them later";
+
+  const stuck =
+    answers.pain === "like_nosave" ? "Most of the time, the like is as far as it goes."
+    : answers.pain === "save_noutilize" ? "When you do save them, they rarely get opened again."
+    : answers.pain === "screenshots_chat" ? "Right now they die in screenshots and group chats."
+    : answers.pain === "install_gap" ? "You mean to put them in install, and then the week gets away from you."
+    : "They do not end up in a real playbook.";
+
+  const staffLine =
+    answers.staff === "staff" || answers.staff === "large"
+      ? "Your staff should be looking at the same book you are."
+      : "This can stay your personal book until you need to share it.";
+
+  return {
+    title: `A ${level} ${role}.`,
+    body: `You save plays because ${why}. ${stuck} At your pace, that is roughly ${yearly.toLocaleString()} plays a year that belong in ${folders[0] ? folders.join(", ") : "your playbook"}—not lost on your phone.`,
+    lines: [
+      folders.length ? `We set up ${folders.join(", ")} for you.` : "We set up folders around how you coach.",
+      answers.focus === "install"
+        ? "Share a play from X or Instagram, and drop it straight into install."
+        : answers.focus === "show_guys"
+        ? "Share a play, then send a clean clip to your room."
+        : "Share a play from X or Instagram, and keep it until you are ready to run it.",
+      staffLine,
+    ],
+  };
+}
+
+function MaterialIcon({ name, filled = false }: { name: string; filled?: boolean }) {
+  return (
+    <span
+      className="material-symbols-outlined"
+      aria-hidden="true"
+      style={{
+        fontVariationSettings: filled
+          ? `"FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24`
+          : `"FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24`,
+      }}
+    >
+      {name}
+    </span>
+  );
+}
+
 function OnboardingOption({
-  label, selected, onClick, multi = false,
-}: { label: string; selected: boolean; onClick: () => void; multi?: boolean }) {
+  label, selected, onClick, multi = false, icon,
+}: {
+  label: string; selected: boolean; onClick: () => void;
+  multi?: boolean; icon?: string;
+}) {
   return (
     <button type="button" onClick={onClick}
       style={{
         width:"100%", textAlign:"left",
         background: selected ? STEEP.apricotWash : STEEP.white,
         border:`1.5px solid ${selected ? STEEP.rust : "rgba(167,170,175,0.35)"}`,
-        borderRadius:16, padding:"16px 18px",
-        cursor:"pointer", transition:"border-color .15s, background .15s",
-        display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:14,
+        borderRadius:16, padding:"14px 16px",
+        cursor:"pointer",
+        transition:"border-color .15s, background .15s, transform .15s",
+        transform: selected ? "scale(0.985)" : "scale(1)",
+        display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
       }}>
-      <span style={{ fontSize:15, color:STEEP.ink, letterSpacing:"-0.009em",
-        fontWeight: selected ? 500 : 400, lineHeight:1.45, flex:1 }}>{label}</span>
+      <div style={{ display:"flex", alignItems:"center", gap:12, flex:1, minWidth:0 }}>
+        {icon && (
+          <div style={{
+            width:40, height:40, borderRadius:12, flexShrink:0,
+            background: selected ? STEEP.rust : STEEP.fog,
+            color: selected ? "#fff" : STEEP.ink,
+            display:"flex", alignItems:"center", justifyContent:"center",
+            transition:"background .15s, color .15s",
+          }}>
+            <MaterialIcon name={icon} filled={selected} />
+          </div>
+        )}
+        <span style={{ fontSize:15, color:STEEP.ink, letterSpacing:"-0.009em",
+          fontWeight: selected ? 500 : 400, lineHeight:1.4 }}>{label}</span>
+      </div>
       {multi ? (
         <div style={{
-          width:20, height:20, borderRadius:6, flexShrink:0, marginTop:2,
+          width:20, height:20, borderRadius:6, flexShrink:0,
           border:`1.5px solid ${selected ? STEEP.rust : STEEP.dove}`,
           background: selected ? STEEP.rust : "transparent",
           display:"flex", alignItems:"center", justifyContent:"center",
@@ -4564,7 +4844,7 @@ function OnboardingOption({
         </div>
       ) : selected ? (
         <div style={{ width:8, height:8, borderRadius:"50%",
-          background:STEEP.rust, flexShrink:0, marginTop:7 }} />
+          background:STEEP.rust, flexShrink:0 }} />
       ) : null}
     </button>
   );
@@ -4597,27 +4877,95 @@ function OnboardingStepShell({ title, subtitle, children }: {
   );
 }
 
+/** Mid-funnel value proof: show a playbook shaped like THEM before asking for money. */
+function ValueRevealStep({ answers }: { answers: OnboardingAnswers }) {
+  const book = answers.userType === "fan" ? fanPlaybook() : coachPlaybook(answers);
+  return (
+    <OnboardingStepShell
+      title="Here is your playbook."
+      subtitle={book.identityLine}>
+
+      {/* Mini playbook UI */}
+      <div style={{
+        background: STEEP.ink, borderRadius:20, padding:"16px 16px 14px",
+        color:"#fff", position:"relative", overflow:"hidden",
+      }}>
+        <div style={{ position:"absolute", top:-30, right:-20, width:110, height:110,
+          borderRadius:"50%", pointerEvents:"none",
+          background:`radial-gradient(circle, ${STEEP.rust}55 0%, transparent 70%)` }} />
+        <div style={{ fontSize:11, fontWeight:600, letterSpacing:"0.1em",
+          textTransform:"uppercase", color:"rgba(255,255,255,0.55)", marginBottom:6,
+          position:"relative" }}>
+          {book.identityLine}
+        </div>
+        <div style={{ fontFamily:STEEP.serif, fontSize:22, letterSpacing:"-0.02em",
+          marginBottom:14, position:"relative" }}>
+          Playbook
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8, position:"relative" }}>
+          {book.folders.map(folder => (
+            <div key={folder.name} style={{
+              background:"rgba(255,255,255,0.08)", borderRadius:12,
+              padding:"10px 12px",
+              border:"1px solid rgba(255,255,255,0.08)",
+            }}>
+              <div style={{ fontSize:14, fontWeight:600, marginBottom:4 }}>{folder.name}</div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                {folder.subs.map(sub => (
+                  <span key={sub} style={{
+                    fontSize:11, color:"rgba(255,255,255,0.7)",
+                    background:"rgba(255,255,255,0.08)",
+                    padding:"3px 8px", borderRadius:99,
+                  }}>{sub}</span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Product value lines */}
+      <div style={{ display:"flex", flexDirection:"column", gap:4, marginTop:4 }}>
+        {book.valueLines.map(line => (
+          <PreviewLine key={line} text={line} />
+        ))}
+      </div>
+
+      <div style={{
+        marginTop:4, padding:"12px 14px", borderRadius:14,
+        background: STEEP.apricotWash,
+        border:`1px solid ${STEEP.rust}33`,
+        fontSize:13, color:STEEP.ink, lineHeight:1.45, letterSpacing:"-0.009em",
+      }}>
+        {book.shareLine}
+      </div>
+    </OnboardingStepShell>
+  );
+}
+
 // "Building your playbook..." animated loader — Noom-style proof of effort
-function BuildingPlaybookStep({ onDone, userType }:
-  { onDone:()=>void; userType: OnboardingUserType | null }) {
+function BuildingPlaybookStep({ onDone, answers }:
+  { onDone:()=>void; answers: OnboardingAnswers }) {
   const [progress, setProgress] = useState(0);
-  const stages = userType === "fan"
+  const roleName = answers.role ? ROLE_LABEL[answers.role] : "coach";
+  const stages = answers.userType === "fan"
     ? [
-        "Analyzing your saving habits",
-        "Building your personal playbook",
-        "Connecting X & Instagram sources",
-        "Setting up your library",
+        "Setting up your folders…",
+        "Connecting X and Instagram…",
+        "Almost done…",
       ]
     : [
-        "Analyzing your coaching workflow",
-        "Building your team playbook",
-        "Mapping your install needs",
-        "Calibrating clip categories",
+        `Setting up a ${roleName.toLowerCase()} playbook…`,
+        answers.focus === "install" ? "Adding install folders…"
+          : answers.focus === "show_guys" ? "Adding folders for your room…"
+          : "Adding folders for plays you like…",
+        "Connecting X and Instagram…",
+        "Almost done…",
       ];
   const [stage, setStage] = useState(0);
 
   useEffect(() => {
-    const totalMs = 2400;
+    const totalMs = 2800;
     const tickMs = 40;
     const totalTicks = totalMs / tickMs;
     let t = 0;
@@ -4663,10 +5011,10 @@ function BuildingPlaybookStep({ onDone, userType }:
         color: STEEP.ink, letterSpacing:"-0.03em",
         lineHeight:1.2, margin:0, marginBottom:14,
       }}>
-        Building your playbook…
+        Setting up your playbook…
       </h1>
       <p style={{ fontSize:14, color:STEEP.graphite, letterSpacing:"-0.009em",
-        lineHeight:1.5, margin:0, transition:"opacity .25s" }}>
+        lineHeight:1.5, margin:0, transition:"opacity .25s", minHeight:21 }}>
         {stages[stage]}
       </p>
     </div>
@@ -4677,25 +5025,13 @@ function BuildingPlaybookStep({ onDone, userType }:
 function PlanPreviewStep({ answers }: { answers: OnboardingAnswers }) {
   const monthly = estimateMonthlyClips(answers.volume);
   const yearly = monthly * 12;
-  const painLine: Record<OnboardingPain, string> = {
-    save_forget: "You'll come back to every play you save",
-    cant_find: "You'll find any play in under 5 seconds",
-    group_chat_lost: "No more clips dying in the group chat",
-    scroll_again: "Stop scrolling X for that one play",
-  };
-
-  const role = answers.userType === "fan" ? "fan" : "coach";
-  const levelLabel: Record<OnboardingLevel, string> = {
-    hs: "high school", college: "college", youth: "youth", pro: "pro",
-  };
-  const roleLine = answers.userType === "coach" && answers.level
-    ? `${levelLabel[answers.level]} coach`
-    : role;
+  const book = answers.userType === "fan" ? fanPlaybook() : coachPlaybook(answers);
+  const topFolders = book.folders.map(f => f.name).slice(0, 3).join(" · ");
 
   return (
     <OnboardingStepShell
-      title="Your playbook is ready"
-      subtitle="Based on your answers, here's what Playbook will do for you.">
+      title="You are all set."
+      subtitle={book.identityLine}>
 
       {/* Hero stat card */}
       <div style={{
@@ -4711,7 +5047,7 @@ function PlanPreviewStep({ answers }: { answers: OnboardingAnswers }) {
         <div style={{ fontSize:11, color:STEEP.rust, fontWeight:600,
           letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8,
           position:"relative" }}>
-          Built for a {roleLine}
+          {book.identityLine}
         </div>
         <div style={{ display:"flex", alignItems:"baseline", gap:8, marginBottom:6 }}>
           <span style={{ fontFamily:STEEP.serif, fontSize:48, fontWeight:400,
@@ -4724,20 +5060,20 @@ function PlanPreviewStep({ answers }: { answers: OnboardingAnswers }) {
           </span>
         </div>
         <div style={{ fontSize:13, color:STEEP.graphite, lineHeight:1.5 }}>
-          ≈ {monthly} per month, all organized and searchable in seconds
+          About {monthly} plays a month across {topFolders || "your folders"}.
         </div>
       </div>
 
       {/* Outcome lines */}
       <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:6 }}>
         {answers.pain && (
-          <PreviewLine text={painLine[answers.pain]} />
+          <PreviewLine text={painPreviewLine(answers.pain)} />
         )}
-        <PreviewLine text="Save from X & Instagram with one tap" />
+        <PreviewLine text={book.shareLine} />
         <PreviewLine text={
           answers.userType === "coach" && (answers.staff === "staff" || answers.staff === "large")
-            ? "Share your playbook with your entire staff"
-            : "Build categories around how you actually think"
+            ? "Shared playbook for your whole staff"
+            : book.valueLines[0]
         } />
       </div>
     </OnboardingStepShell>
@@ -4856,25 +5192,21 @@ function ReverseTrialSheet({ onAccept, onDecline }:
         </div>
 
         <div style={{ position:"relative" }}>
-          <div style={{ fontSize:11, color:STEEP.rust, fontWeight:600,
-            letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>
-            One-time offer
-          </div>
           <h2 style={{ fontFamily:STEEP.serif, fontSize:28, fontWeight:400,
             color:STEEP.ink, letterSpacing:"-0.03em", lineHeight:1.2,
             margin:0, marginBottom:12 }}>
-            Try Playbook Pro free for 14 days
+            Try Pro free for 14 days.
           </h2>
           <p style={{ fontSize:15, color:STEEP.graphite, letterSpacing:"-0.009em",
             lineHeight:1.55, margin:0, marginBottom:24 }}>
-            No credit card. No commitment. See if it's worth it before you decide.
+            No card required. Cancel anytime.
           </p>
 
           <div style={{ display:"flex", flexDirection:"column", gap:10,
             marginBottom:24 }}>
             <PreviewLine text="Unlimited clips for 14 days" />
             <PreviewLine text="Full access to every Pro feature" />
-            <PreviewLine text="No card required to start" />
+            <PreviewLine text="No card required to start." />
           </div>
 
           <GlowButton label="Start 14-day free trial" onPress={() => close(onAccept)} />
@@ -4885,7 +5217,7 @@ function ReverseTrialSheet({ onAccept, onDecline }:
               padding:"16px 0 0", cursor:"pointer",
               fontSize:14, color:STEEP.graphite, letterSpacing:"-0.009em",
               fontFamily:STEEP.sans }}>
-            Continue with free (5 clips)
+            No thanks
           </button>
         </div>
       </div>
@@ -4896,22 +5228,32 @@ function ReverseTrialSheet({ onAccept, onDecline }:
 function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()=>void }) {
   const [stepIdx, setStepIdx] = useState(0);
   const [answers, setAnswers] = useState<OnboardingAnswers>({
-    userType: null, level: null, staff: null,
+    userType: null, level: null, role: null, focus: null, staff: null,
     pain: null, volume: null,
-    plan: "annual", // Annual default — research-backed for 2026
+    plan: "annual", // Annual default — conversion-backed
   });
   const [showReverseTrial, setShowReverseTrial] = useState(false);
+  const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const steps = onboardingSteps(answers.userType);
   const step = steps[stepIdx] ?? "who";
-  const totalSteps = steps.length;
   const isFirst = stepIdx === 0;
 
+  function clearAdvanceTimer() {
+    if (advanceTimer.current) {
+      clearTimeout(advanceTimer.current);
+      advanceTimer.current = null;
+    }
+  }
+
+  useEffect(() => () => clearAdvanceTimer(), []);
+
   function goNext() {
+    clearAdvanceTimer();
     if (step === "paywall") {
       // Paid plan on a real device → trigger the native Apple purchase and wait
-      // for the result before advancing. Free plan / browser preview → proceed.
-      if (answers.plan !== "free" && NativeBridge.available) {
+      // for the result before advancing. Browser preview → proceed.
+      if (NativeBridge.available) {
         NativeBridge.purchase(answers.plan);
         return;
       }
@@ -4921,6 +5263,15 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
     if (stepIdx < steps.length - 1) {
       setStepIdx(stepIdx + 1);
     }
+  }
+
+  // Auto-advance after a single-choice tap — snappier than waiting on Continue.
+  function pickAndAdvance(patch: Partial<OnboardingAnswers>) {
+    clearAdvanceTimer();
+    setAnswers(a => ({ ...a, ...patch }));
+    advanceTimer.current = setTimeout(() => {
+      setStepIdx(i => i + 1);
+    }, 280);
   }
 
   // Advance once a native purchase (or restore) succeeds.
@@ -4934,22 +5285,29 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
   }, []);
 
   function goBack() {
+    clearAdvanceTimer();
     if (isFirst) onBack();
     else setStepIdx(i => i - 1);
   }
 
   // Building step auto-advances when its progress completes
   function buildingDone() {
-    if (step === "building") goNext();
+    if (step === "building") {
+      setStepIdx(i => i + 1);
+    }
   }
 
   const canContinue = (() => {
     switch (step) {
       case "who":      return answers.userType !== null;
       case "level":    return answers.level !== null;
+      case "role":     return answers.role !== null;
+      case "focus":    return answers.focus !== null;
+      case "value":    return true;
       case "staff":    return answers.staff !== null;
       case "pain":     return answers.pain !== null;
       case "volume":   return answers.volume !== null;
+      case "commit":   return true;
       case "building": return false; // auto-advances
       case "preview":  return true;
       case "paywall":  return true;
@@ -4958,21 +5316,36 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
   })();
 
   const continueLabel = (() => {
-    if (step === "preview") return "See your plan";
+    if (step === "value")   return "Continue";
+    if (step === "commit")  return "Set up my playbook";
+    if (step === "preview") return "See plans";
     if (step === "paywall") {
-      if (answers.plan === "free") return "Continue for free";
       if (answers.plan === "team5" || answers.plan === "team10") return "Get the Team plan";
-      return "Get Unlimited";
+      if (answers.plan === "weekly") return "Start Weekly";
+      return "Start Annual";
     }
     return "Continue";
   })();
 
   const recommendTeam = answers.staff === "staff" || answers.staff === "large";
-  // Paywall toggle: Individual vs Team plans
+  // Paywall toggle: Individual vs Team plans — default Team when staff said yes
   const [planTab, setPlanTab] = useState<"individual" | "team">("individual");
+  const didSeedTeamTab = useRef(false);
+  useEffect(() => {
+    if (step === "paywall" && recommendTeam && !didSeedTeamTab.current) {
+      didSeedTeamTab.current = true;
+      setPlanTab("team");
+      setAnswers(a => ({ ...a, plan: "team5" }));
+    }
+  }, [step, recommendTeam]);
+
   function chooseTab(tab: "individual" | "team") {
     setPlanTab(tab);
     setAnswers(a => ({ ...a, plan: tab === "team" ? "team5" : "annual" }));
+  }
+
+  function trySoftExit() {
+    setShowReverseTrial(true);
   }
 
   // Total steps shown to user = real steps - 1 (building screen hidden from count)
@@ -4982,6 +5355,38 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
 
   // On building step, hide the top progress bar
   const hideTopBar = step === "building";
+  const hideFooter = step === "building" || (
+    // Question steps auto-advance on tap — footer for value / commit / preview / paywall
+    step === "who" || step === "level" || step === "role" || step === "focus"
+    || step === "staff" || step === "pain" || step === "volume"
+  );
+
+  const painOptions = answers.userType === "fan" ? FAN_PAINS : COACH_PAINS;
+  const socialProof = (() => {
+    if (answers.userType === "fan") {
+      return { quote: "Finally stopped losing clips in my camera roll.", by: "Marcus, football fan" };
+    }
+    switch (answers.role) {
+      case "oc":
+        return { quote: "I used to lose install clips in my camera roll. Not anymore.", by: "OC, high school" };
+      case "dc":
+        return { quote: "Our staff finally looks at the same clips I save.", by: "DC, 5A" };
+      case "position":
+        return { quote: "It is easy to pull up examples for my room.", by: "WR coach" };
+      case "analyst":
+        return { quote: "The ideas I like actually stay organized.", by: "Analyst" };
+      case "head":
+        return { quote: "The whole staff is in one book instead of three chats.", by: "HC, high school" };
+      default:
+        break;
+    }
+    switch (answers.level) {
+      case "college": return { quote: "Our staff actually opens this.", by: "OC, D2" };
+      case "youth":   return { quote: "Clips for the kids are not scattered anymore.", by: "Youth HC" };
+      case "pro":     return { quote: "Beats digging through old threads.", by: "QC" };
+      default:        return { quote: "Screenshots and group chats were a mess.", by: "HS coach" };
+    }
+  })();
 
   return (
     <div style={{
@@ -5039,84 +5444,147 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
 
         {step === "who" && (
           <OnboardingStepShell
-            title="Stop losing the plays you save"
-            subtitle="Tell us how you watch football and we'll build your playbook in 60 seconds.">
-            <OnboardingOption label="I'm a coach" selected={answers.userType === "coach"}
-              onClick={() => setAnswers(a => ({ ...a, userType:"coach" }))} />
-            <OnboardingOption label="I'm a fan" selected={answers.userType === "fan"}
-              onClick={() => setAnswers(a => ({ ...a, userType:"fan", level:null, staff:null }))} />
+            title="Quick setup"
+            subtitle="A few questions so we can build your playbook.">
+            <OnboardingOption icon="sports" label="I am a coach"
+              selected={answers.userType === "coach"}
+              onClick={() => pickAndAdvance({ userType:"coach" })} />
+            <OnboardingOption icon="stadium" label="I am a fan"
+              selected={answers.userType === "fan"}
+              onClick={() => pickAndAdvance({
+                userType:"fan", level:null, role:null, focus:null, staff:null,
+              })} />
           </OnboardingStepShell>
         )}
 
         {step === "level" && (
           <OnboardingStepShell
             title="What level do you coach?"
-            subtitle="We'll tune categories and examples to your level.">
+            subtitle="This helps us set up the right folders.">
             {([
-              ["hs", "High school"],
-              ["college", "College"],
-              ["youth", "Youth"],
-              ["pro", "Pro"],
-            ] as const).map(([id, label]) => (
-              <OnboardingOption key={id} label={label}
+              ["hs", "High school", "school"],
+              ["college", "College", "account_balance"],
+              ["youth", "Youth", "diversity_3"],
+              ["pro", "Pro", "emoji_events"],
+            ] as const).map(([id, label, icon]) => (
+              <OnboardingOption key={id} icon={icon} label={label}
                 selected={answers.level === id}
-                onClick={() => setAnswers(a => ({ ...a, level:id }))} />
+                onClick={() => pickAndAdvance({ level:id })} />
             ))}
           </OnboardingStepShell>
+        )}
+
+        {step === "role" && (
+          <OnboardingStepShell
+            title="What is your role?"
+            subtitle="We will set up folders for your side of the ball.">
+            {COACH_ROLES.map(({ id, label, icon }) => (
+              <OnboardingOption
+                key={id}
+                icon={icon}
+                label={label}
+                selected={answers.role === id}
+                onClick={() => pickAndAdvance({ role:id })}
+              />
+            ))}
+          </OnboardingStepShell>
+        )}
+
+        {step === "focus" && (
+          <OnboardingStepShell
+            title="When you save a play, why?"
+            subtitle="Most coaches save a play because they want to run it.">
+            {COACH_FOCUSES.map(({ id, label, icon }) => (
+              <OnboardingOption key={id} icon={icon} label={label}
+                selected={answers.focus === id}
+                onClick={() => pickAndAdvance({ focus:id })} />
+            ))}
+          </OnboardingStepShell>
+        )}
+
+        {step === "value" && (
+          <ValueRevealStep answers={answers} />
         )}
 
         {step === "staff" && (
           <OnboardingStepShell
             title="Do you share plays with other coaches?"
-            subtitle="Group chats are where plays go to die.">
-            <OnboardingOption label="No — just me"
+            subtitle="This helps us know if you need a team plan.">
+            <OnboardingOption icon="person" label="No, just me"
               selected={answers.staff === "solo"}
-              onClick={() => setAnswers(a => ({ ...a, staff:"solo" }))} />
-            <OnboardingOption label="Yes — 2 to 6 coaches"
+              onClick={() => pickAndAdvance({ staff:"solo" })} />
+            <OnboardingOption icon="group" label="Yes, 2 to 6 coaches"
               selected={answers.staff === "staff"}
-              onClick={() => setAnswers(a => ({ ...a, staff:"staff" }))} />
-            <OnboardingOption label="Yes — larger staff"
+              onClick={() => pickAndAdvance({ staff:"staff" })} />
+            <OnboardingOption icon="groups" label="Yes, a larger staff"
               selected={answers.staff === "large"}
-              onClick={() => setAnswers(a => ({ ...a, staff:"large" }))} />
+              onClick={() => pickAndAdvance({ staff:"large" })} />
           </OnboardingStepShell>
         )}
 
         {step === "pain" && (
           <OnboardingStepShell
-            title="Which one sounds like you?"
-            subtitle="Pick the closest fit.">
-            {([
-              ["save_forget", "I save and send plays all the time but never come back to them"],
-              ["cant_find", "I know I saved it somewhere but can't find it"],
-              ["group_chat_lost", "Our group chat is full of clips nobody can find later"],
-              ["scroll_again", "I'm always scrolling X trying to find that one play again"],
-            ] as const).map(([id, label]) => (
-              <OnboardingOption key={id} label={label}
+            title={answers.userType === "coach"
+              ? "What usually happens after you like a play?"
+              : "Which is closest to your experience?"}
+            subtitle="Choose one.">
+            {painOptions.map(({ id, label, icon }) => (
+              <OnboardingOption key={id} icon={icon} label={label}
                 selected={answers.pain === id}
-                onClick={() => setAnswers(a => ({ ...a, pain:id }))} />
+                onClick={() => pickAndAdvance({ pain:id })} />
             ))}
           </OnboardingStepShell>
         )}
 
         {step === "volume" && (
           <OnboardingStepShell
-            title="How many plays do you save in a week?"
-            subtitle="Saving and sending — not just bookmarking.">
+            title="How often do you save plays?"
+            subtitle="A rough estimate is fine.">
             {([
-              ["light", "A few — under 5"],
-              ["medium", "A handful — 5 to 15"],
-              ["heavy", "A lot — 15 to 30"],
-              ["constant", "Constantly — 30+"],
-            ] as const).map(([id, label]) => (
-              <OnboardingOption key={id} label={label}
+              ["light", "A few times a week", "calendar_view_week"],
+              ["medium", "Most days", "today"],
+              ["heavy", "Often—most times I open X", "bolt"],
+              ["constant", "Constantly", "all_inclusive"],
+            ] as const).map(([id, label, icon]) => (
+              <OnboardingOption key={id} icon={icon} label={label}
                 selected={answers.volume === id}
-                onClick={() => setAnswers(a => ({ ...a, volume:id }))} />
+                onClick={() => pickAndAdvance({ volume:id })} />
             ))}
           </OnboardingStepShell>
         )}
 
+        {step === "commit" && (() => {
+          const profile = personalCommitCard(answers);
+          return (
+            <OnboardingStepShell
+              title={profile.title}
+              subtitle="Here is what we heard.">
+              <div style={{
+                background: STEEP.white,
+                border:`1.5px solid rgba(167,170,175,0.3)`,
+                borderRadius:18, padding:"18px 18px 14px",
+              }}>
+                <p style={{
+                  fontSize:15, color:STEEP.ink, lineHeight:1.55,
+                  letterSpacing:"-0.009em", margin:"0 0 16px",
+                }}>
+                  {profile.body}
+                </p>
+                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                  {profile.lines.map(line => (
+                    <PreviewLine key={line} text={line} />
+                  ))}
+                </div>
+              </div>
+            </OnboardingStepShell>
+          );
+        })()}
+
         {step === "building" && (
-          <BuildingPlaybookStep userType={answers.userType} onDone={buildingDone} />
+          <BuildingPlaybookStep
+            answers={answers}
+            onDone={buildingDone}
+          />
         )}
 
         {step === "preview" && (
@@ -5125,28 +5593,28 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
 
         {step === "paywall" && (
           <OnboardingStepShell
-            title={answers.userType === "fan"
-              ? "Save it. Find it. Share it."
-              : "Every play, ready when you need it"}>
+            title={painMirror(answers.pain, answers.userType)}>
 
-            {/* Individual / Team toggle */}
-            <div style={{ display:"flex", gap:4, background: STEEP.fog,
-              borderRadius:12, padding:4, marginBottom:12 }}>
-              {(["individual","team"] as const).map(tab => (
-                <button key={tab} type="button" onClick={() => chooseTab(tab)}
-                  style={{ flex:1, padding:"9px 0", borderRadius:9, border:"none",
-                    cursor:"pointer",
-                    background: planTab === tab ? STEEP.white : "transparent",
-                    boxShadow: planTab === tab ? STEEP.cardShadow : "none",
-                    color: planTab === tab ? STEEP.ink : STEEP.graphite,
-                    fontSize:14, fontWeight:600, fontFamily: STEEP.sans,
-                    letterSpacing:"-0.01em", transition:"all .15s" }}>
-                  {tab === "individual" ? "Individual" : "Team"}
-                </button>
-              ))}
-            </div>
+            {/* Individual / Team toggle — coaches only */}
+            {answers.userType === "coach" && (
+              <div style={{ display:"flex", gap:4, background: STEEP.fog,
+                borderRadius:12, padding:4, marginBottom:12 }}>
+                {(["individual","team"] as const).map(tab => (
+                  <button key={tab} type="button" onClick={() => chooseTab(tab)}
+                    style={{ flex:1, padding:"9px 0", borderRadius:9, border:"none",
+                      cursor:"pointer",
+                      background: planTab === tab ? STEEP.white : "transparent",
+                      boxShadow: planTab === tab ? STEEP.cardShadow : "none",
+                      color: planTab === tab ? STEEP.ink : STEEP.graphite,
+                      fontSize:14, fontWeight:600, fontFamily: STEEP.sans,
+                      letterSpacing:"-0.01em", transition:"all .15s" }}>
+                    {tab === "individual" ? "Individual" : "Team"}
+                  </button>
+                ))}
+              </div>
+            )}
 
-            {/* Social proof */}
+            {/* Social proof — personalized by level */}
             <div style={{
               background: STEEP.white,
               border:`1px solid rgba(167,170,175,0.25)`,
@@ -5163,45 +5631,36 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
               <div style={{ fontSize:12, color:STEEP.graphite, lineHeight:1.4,
                 letterSpacing:"-0.009em", flex:1 }}>
                 <span style={{ color:STEEP.ink, fontWeight:500 }}>
-                  "Replaced 3 different apps for me."
+                  "{socialProof.quote}"
                 </span>{" "}
-                Coach Daniels, HS football
+                {socialProof.by}
               </div>
             </div>
 
             <div style={{ display:"flex", flexDirection:"column", gap:10,
               marginTop:10, paddingTop:0 }}>
 
-              {planTab === "individual" ? (
+              {(answers.userType !== "coach" || planTab === "individual") ? (
                 <>
                   {/* Annual — recommended */}
                   <PaywallPlanCard
                     selected={answers.plan === "annual"}
                     onClick={() => setAnswers(a => ({ ...a, plan:"annual" }))}
                     name="Annual"
-                    price="$2.50/mo"
-                    sublabel="$29.99/year · unlimited playbook saves"
+                    price="$0.96/wk"
+                    sublabel="$49.99/year · unlimited playbook saves"
                     badge="Best value"
                     badgeBg={STEEP.rust}
-                    savings="Save 75%"
+                    savings="Save 84%"
                   />
 
-                  {/* Monthly */}
+                  {/* Weekly */}
                   <PaywallPlanCard
-                    selected={answers.plan === "monthly"}
-                    onClick={() => setAnswers(a => ({ ...a, plan:"monthly" }))}
-                    name="Monthly"
-                    price="$9.99/mo"
-                    sublabel="Unlimited playbook saves"
-                  />
-
-                  {/* Free — freemium tier */}
-                  <PaywallPlanCard
-                    selected={answers.plan === "free"}
-                    onClick={() => setAnswers(a => ({ ...a, plan:"free" }))}
-                    name="Free"
-                    price="$0"
-                    sublabel="Save up to 5 plays · browse the full feed"
+                    selected={answers.plan === "weekly"}
+                    onClick={() => setAnswers(a => ({ ...a, plan:"weekly" }))}
+                    name="Weekly"
+                    price="$5.99/wk"
+                    sublabel="Unlimited playbook saves · billed weekly"
                   />
                 </>
               ) : (
@@ -5259,38 +5718,41 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
         </div>
       </div>
 
-      {/* Footer CTA */}
-      {!hideTopBar && (
+      {/* Footer CTA — hidden on auto-advance question steps */}
+      {!hideTopBar && !hideFooter && (
         <div style={{ flexShrink:0,
           padding:`16px ${OB_PAD}px calc(24px + var(--pb-safe-bottom, env(safe-area-inset-bottom)))`,
           borderTop:`1px solid rgba(167,170,175,0.18)`,
           background: STEEP.white }}>
           <GlowButton label={continueLabel} onPress={goNext} disabled={!canContinue} />
-          {step === "paywall" && answers.plan !== "free" && (
+          {step === "paywall" && (
             <button type="button"
-              onClick={() => { setAnswers(a => ({ ...a, plan:"free" })); onComplete(); }}
+              onClick={trySoftExit}
               style={{ width:"100%", background:"none", border:"none",
                 padding:"14px 0 0", cursor:"pointer",
                 fontSize:14, color:STEEP.graphite, letterSpacing:"-0.009em",
                 fontFamily:STEEP.sans }}>
-              Continue with the free plan
+              Not now
             </button>
           )}
         </div>
       )}
 
-      {/* Reverse trial on paywall dismiss */}
+      {/* Soft exit → 14-day trial offer (no free tier) */}
       {showReverseTrial && (
         <ReverseTrialSheet
           onAccept={() => {
             setShowReverseTrial(false);
             setAnswers(a => ({ ...a, plan:"annual" }));
+            if (NativeBridge.available) {
+              NativeBridge.purchase("annual");
+              return;
+            }
             onComplete();
           }}
           onDecline={() => {
+            // Stay on the paywall — no free bypass for now.
             setShowReverseTrial(false);
-            setAnswers(a => ({ ...a, plan:"free" }));
-            onComplete();
           }}
         />
       )}
