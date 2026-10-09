@@ -83,22 +83,23 @@ function extractInstagramShortcode(url: string): string | null {
 }
 
 function twitterEmbedUrl(tweetId: string): string {
-  return `https://platform.twitter.com/embed/Tweet.html?id=${tweetId}&theme=dark&dnt=true`;
+  // Video-focused player — better for full-bleed muted autoplay than the tweet card.
+  return `https://twitter.com/i/videos/tweet/${tweetId}`;
 }
 
 function tiktokEmbedUrl(videoId: string): string {
-  return `https://www.tiktok.com/embed/v2/${videoId}`;
+  return `https://www.tiktok.com/embed/v2/${videoId}?autoplay=1`;
 }
 
 function instagramEmbedUrl(shortcode: string, sourceUrl: string): string {
   const isReel = /instagram\.com\/(?:reel|reels)\//i.test(sourceUrl);
   const kind = isReel ? "reel" : "p";
-  return `https://www.instagram.com/${kind}/${shortcode}/embed/captioned/`;
+  return `https://www.instagram.com/${kind}/${shortcode}/embed/`;
 }
 
 function facebookEmbedUrl(sourceUrl: string): string {
   const href = encodeURIComponent(sourceUrl);
-  return `https://www.facebook.com/plugins/video.php?href=${href}&show_text=false&width=320&height=560&t=0`;
+  return `https://www.facebook.com/plugins/video.php?href=${href}&show_text=false&autoplay=true&mute=1&width=320&height=560&t=0`;
 }
 
 async function fetchTwitterOEmbed(url: string): Promise<Partial<LinkMetadata>> {

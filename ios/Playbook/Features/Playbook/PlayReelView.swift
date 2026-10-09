@@ -31,12 +31,23 @@ struct PlayReelView: View {
                 currentIndex = idx
             }
             if let play = current {
-                vm.resolveEmbed(for: play)
+                await vm.resolvePlayback(for: play)
+            }
+            // Warm the next clip for instant swipe autoplay.
+            let next = currentIndex + 1
+            if plays.indices.contains(next) {
+                await vm.resolvePlayback(for: plays[next])
             }
         }
         .onChange(of: currentIndex) { _, newIndex in
             guard plays.indices.contains(newIndex) else { return }
-            vm.resolveEmbed(for: plays[newIndex])
+            Task {
+                await vm.resolvePlayback(for: plays[newIndex])
+                let next = newIndex + 1
+                if plays.indices.contains(next) {
+                    await vm.resolvePlayback(for: plays[next])
+                }
+            }
         }
     }
 
@@ -74,16 +85,26 @@ struct PlayReelView: View {
             thumbnailBackdrop(for: play)
 
             if let owned = vm.ownedVideoURL(for: play), isActive {
-                // Coach-owned uploads only — never third-party social downloads.
+                // Coach-owned uploads — muted looping autoplay.
                 LoopingVideoPlayer(url: owned)
                     .ignoresSafeArea()
+            } else if let stream = vm.streamURL(for: play), isActive {
+                // X temporary CDN stream — muted looping autoplay, not stored.
+                LoopingVideoPlayer(url: stream)
+                    .ignoresSafeArea()
             } else if let embed = vm.embedURL(for: play), isActive {
+                // TikTok / IG / FB (and X fallback) — official embed with autoplay kick.
                 EmbedPlayerView(
                     embedURL: embed,
                     isActive: isActive,
                     onUnavailable: { vm.markUnavailable(play) }
                 )
                 .ignoresSafeArea()
+            } else if isActive && play.sourcePlatform == .twitter && vm.streamURL(for: play) == nil
+                        && vm.embedURL(for: play) == nil
+                        && !vm.unavailableIDs.contains(play.id) {
+                ProgressView()
+                    .tint(.white)
             } else if isActive && play.status == .ready && !vm.canPlayInApp(play) {
                 openSourcePrompt(for: play)
             } else if !isActive {
@@ -141,6 +162,8 @@ struct PlayReelView: View {
             )
         }
         .ignoresSafeArea(edges: .bottom)
+        // Let taps reach the video; only the Source link stays tappable.
+        .allowsHitTesting(showOverlay)
     }
 
     @ViewBuilder
@@ -183,12 +206,7 @@ struct PlayReelView: View {
         if vm.unavailableIDs.contains(play.id) {
             return "This clip is private, deleted, or unavailable in-app."
         }
-        switch play.sourcePlatform {
-        case .twitter, .tiktok, .instagram, .facebook:
-            return "Watch on the original platform"
-        case .unknown:
-            return "Open the original link to watch"
-        }
+        return "Watch on the original platform"
     }
 
     private func openLabel(for platform: SourcePlatform) -> String {

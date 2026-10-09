@@ -32,18 +32,18 @@ function extractInstagramShortcode(url: string): string | null {
 function officialEmbedURL(sourceUrl: string): string | null {
   const tweetId = extractTweetId(sourceUrl);
   if (tweetId) {
-    return `https://platform.twitter.com/embed/Tweet.html?id=${tweetId}&theme=dark&dnt=true`;
+    return `https://twitter.com/i/videos/tweet/${tweetId}`;
   }
 
   const tiktokId = extractTikTokVideoId(sourceUrl);
   if (tiktokId) {
-    return `https://www.tiktok.com/embed/v2/${tiktokId}`;
+    return `https://www.tiktok.com/embed/v2/${tiktokId}?autoplay=1`;
   }
 
   const igCode = extractInstagramShortcode(sourceUrl);
   if (igCode) {
     const isReel = /instagram\.com\/(?:reel|reels)\//i.test(sourceUrl);
-    return `https://www.instagram.com/${isReel ? "reel" : "p"}/${igCode}/embed/captioned/`;
+    return `https://www.instagram.com/${isReel ? "reel" : "p"}/${igCode}/embed/`;
   }
 
   try {
@@ -54,7 +54,7 @@ function officialEmbedURL(sourceUrl: string): string | null {
       host === "fb.watch" ||
       host === "fb.com"
     ) {
-      return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(sourceUrl)}&show_text=false&width=320&height=560&t=0`;
+      return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(sourceUrl)}&show_text=false&autoplay=true&mute=1&width=320&height=560&t=0`;
     }
   } catch {
     // ignore

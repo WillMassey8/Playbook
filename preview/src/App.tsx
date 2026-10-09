@@ -449,7 +449,7 @@ function playsInCat(catId: string) {
   return allPlays().filter(p => ids.has(p.categoryId));
 }
 
-// ─── Official embed playback (App Store 5.2.3 safe — no re-hosted social video) ───
+// ─── In-app muted autoplay (no re-hosted social files in Storage) ─────────────
 function extractTweetId(url: string): string | null {
   const m = url.match(/(?:twitter\.com|x\.com)\/(?:\w+\/)?status(?:es)?\/(\d+)/i);
   return m?.[1] ?? null;
@@ -472,29 +472,127 @@ type FeedPlay = typeof FEED[number] & {
   embedUrl?: string;
 };
 
-/** Official platform embed URL for in-app iframe / WKWebView playback. */
+/** Local sample files for seeded X clips when CDN is blocked (dev/demo). */
+const PREVIEW_LOCAL_STREAM: Record<string, string> = {
+  "1980441997854011558": "/sample-play.mp4",
+  "2069447298044620972": "/play-2069447298044620972.mp4",
+  "2069095673417318780": "/play-2069095673417318780.mp4",
+};
+
+function syndicationToken(id: string): string {
+  return ((Number(id) / 1e15) * Math.PI).toString(36).replace(/(0+|\.)/g, "");
+}
+
+function pickMp4Variant(variants: Array<Record<string, unknown>>): string | null {
+  const mp4s = variants
+    .filter(v => typeof v.url === "string" && (v.content_type === "video/mp4" || !v.content_type))
+    .map(v => ({ url: v.url as string, bitrate: (v.bitrate as number) ?? 0 }))
+    .sort((a, b) => b.bitrate - a.bitrate);
+  if (mp4s.length === 0) return null;
+  const compatible = mp4s.find(v => v.bitrate > 0 && v.bitrate <= 2_500_000);
+  return (compatible ?? mp4s[0]).url;
+}
+
+function throughVideoProxy(url: string): string {
+  return `/tw-video?url=${encodeURIComponent(url)}`;
+}
+
+const streamCache = new Map<string, string | null>();
+const streamInFlight = new Map<string, Promise<string | null>>();
+
+async function fetchTwitterStream(id: string): Promise<string | null> {
+  try {
+    const endpoint =
+      `/tw-syndication/tweet-result?id=${id}&lang=en&token=${syndicationToken(id)}`;
+    const res = await fetch(endpoint);
+    if (!res.ok) return null;
+    if (!/\bjson\b/i.test(res.headers.get("content-type") ?? "")) return null;
+    const payload = await res.json();
+    const mediaDetails: Array<Record<string, unknown>> = payload?.mediaDetails ?? [];
+    for (const media of mediaDetails) {
+      const type = media.type as string | undefined;
+      if (type !== "video" && type !== "animated_gif") continue;
+      const variants = (media.video_info as { variants?: Array<Record<string, unknown>> })
+        ?.variants ?? [];
+      const url = pickMp4Variant(variants);
+      if (url) return throughVideoProxy(url);
+    }
+  } catch { /* syndication unavailable */ }
+  return null;
+}
+
+/** Temporary X stream for muted <video> autoplay — not stored. */
+function resolveTwitterStream(sourceUrl: string): Promise<string | null> {
+  const id = extractTweetId(sourceUrl);
+  if (!id) return Promise.resolve(null);
+  if (PREVIEW_LOCAL_STREAM[id]) return Promise.resolve(PREVIEW_LOCAL_STREAM[id]);
+  if (streamCache.has(id)) return Promise.resolve(streamCache.get(id)!);
+  const pending = streamInFlight.get(id);
+  if (pending) return pending;
+  const lookup = fetchTwitterStream(id).then(url => {
+    streamCache.set(id, url);
+    streamInFlight.delete(id);
+    return url;
+  }, () => {
+    streamInFlight.delete(id);
+    return null;
+  });
+  streamInFlight.set(id, lookup);
+  return lookup;
+}
+
+function useTwitterAutoplay(
+  play: FeedPlay | null | undefined,
+  isActive: boolean,
+  warm = false,
+): string | null {
+  const [src, setSrc] = useState<string | null>(() => {
+    if (!play || play.platform !== "twitter") return null;
+    if (play.videoStoragePath) return play.videoStoragePath;
+    const id = extractTweetId(play.sourceUrl);
+    if (id && PREVIEW_LOCAL_STREAM[id]) return PREVIEW_LOCAL_STREAM[id];
+    if (id && streamCache.has(id)) return streamCache.get(id)!;
+    return null;
+  });
+  const wanted = isActive || warm;
+
+  useEffect(() => {
+    if (!play || play.platform !== "twitter") { setSrc(null); return; }
+    if (play.videoStoragePath) { setSrc(play.videoStoragePath); return; }
+    if (!wanted) return;
+    let cancelled = false;
+    resolveTwitterStream(play.sourceUrl).then(url => {
+      if (!cancelled) setSrc(url);
+    });
+    return () => { cancelled = true; };
+  }, [wanted, play, play?.platform, play?.sourceUrl, play?.videoStoragePath]);
+
+  return src;
+}
+
+/** Official embed URL for TikTok / IG / FB (and X fallback). */
 function officialEmbedUrl(play: FeedPlay | null | undefined): string | null {
   if (!play) return null;
   if (play.embedUrl) return play.embedUrl;
 
   const tweetId = extractTweetId(play.sourceUrl);
   if (tweetId) {
-    return `https://platform.twitter.com/embed/Tweet.html?id=${tweetId}&theme=dark&dnt=true`;
+    return `https://twitter.com/i/videos/tweet/${tweetId}`;
   }
 
   const tiktokId = extractTikTokVideoId(play.sourceUrl);
   if (tiktokId) {
-    return `https://www.tiktok.com/embed/v2/${tiktokId}`;
+    return `https://www.tiktok.com/embed/v2/${tiktokId}?autoplay=1`;
   }
 
   const igCode = extractInstagramShortcode(play.sourceUrl);
   if (igCode) {
     const isReel = /instagram\.com\/(?:reel|reels)\//i.test(play.sourceUrl);
-    return `https://www.instagram.com/${isReel ? "reel" : "p"}/${igCode}/embed/captioned/`;
+    return `https://www.instagram.com/${isReel ? "reel" : "p"}/${igCode}/embed/`;
   }
 
   if (play.platform === "facebook" || /facebook\.com|fb\.watch|\bfb\.com\b/i.test(play.sourceUrl)) {
-    return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(play.sourceUrl)}&show_text=false&width=320&height=560&t=0`;
+    return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(play.sourceUrl)}&show_text=false&autoplay=true&mute=1&width=320&height=560&t=0`;
   }
 
   return null;
@@ -544,7 +642,7 @@ function platformOriginalLabel(platform: string): string {
   }
 }
 
-/** Official embed iframe — no CDN MP4 extraction or video proxy. */
+/** Official embed iframe with autoplay permission (TikTok / IG / FB). */
 function OfficialEmbedPlayer({
   embedUrl,
   isActive,
@@ -571,6 +669,7 @@ function OfficialEmbedPlayer({
         border: "none",
         background: "#000",
         zIndex: 1,
+        pointerEvents: "none", // don't require a play tap — autoplay handles it
       }}
     />
   );
@@ -1154,24 +1253,35 @@ function FeedCard({ play, isActive, warm = false }:
   }
 
   const userVideo = (play as FeedPlay).videoStoragePath;
-  const embedUrl = officialEmbedUrl(play as FeedPlay);
+  const streamSrc = useTwitterAutoplay(play as FeedPlay, isActive, warm);
+  const autoplaySrc = userVideo || streamSrc;
+  const embedUrl = !autoplaySrc ? officialEmbedUrl(play as FeedPlay) : null;
   const [embedFailed, setEmbedFailed] = useState(false);
-  const hasOwnedVideo = Boolean(userVideo);
+  const [streamTimedOut, setStreamTimedOut] = useState(false);
   const hasEmbed = Boolean(embedUrl) && !embedFailed;
-  const showOpenCard = isActive && !hasOwnedVideo && !hasEmbed;
+
+  useEffect(() => {
+    setStreamTimedOut(false);
+    if (!isActive || autoplaySrc || play.platform !== "twitter") return;
+    const t = setTimeout(() => setStreamTimedOut(true), 4000);
+    return () => clearTimeout(t);
+  }, [isActive, autoplaySrc, play.platform]);
+
+  const showOpenCard = isActive && !autoplaySrc && !hasEmbed
+    && (play.platform !== "twitter" || streamTimedOut || embedFailed);
   const openSource = () => { if (play.sourceUrl) window.open(play.sourceUrl, "_blank"); };
 
   return (
     <div style={{ width:"100%", height:"100%", position:"relative",
       overflow:"hidden" }}
-      onClick={hasOwnedVideo ? handleTap : (showOpenCard ? openSource : undefined)}>
+      onClick={autoplaySrc ? handleTap : (showOpenCard ? openSource : undefined)}>
 
       <PlayMediaBackdrop play={play as FeedPlay} />
 
-      {/* Coach-owned uploads only */}
-      {userVideo && (
+      {/* Muted looping autoplay — X stream or coach-owned upload */}
+      {autoplaySrc && (
         <NativeClipVideo
-          src={userVideo}
+          src={autoplaySrc}
           isActive={isActive}
           paused={paused}
           videoRef={videoRef}
@@ -1179,8 +1289,8 @@ function FeedCard({ play, isActive, warm = false }:
         />
       )}
 
-      {/* Official platform embeds (X / TikTok / Instagram / Facebook) */}
-      {!userVideo && embedUrl && !embedFailed && (
+      {/* TikTok / IG / FB (and X fallback) — official embed, autoplay allowed */}
+      {!autoplaySrc && embedUrl && !embedFailed && (play.platform !== "twitter" || streamTimedOut) && (
         <OfficialEmbedPlayer
           embedUrl={embedUrl}
           isActive={isActive}
@@ -1188,7 +1298,18 @@ function FeedCard({ play, isActive, warm = false }:
         />
       )}
 
-      {/* Unavailable / private / unsupported — open original */}
+      {/* Resolving X stream */}
+      {isActive && play.platform === "twitter" && !autoplaySrc && !streamTimedOut && (
+        <div style={{ position:"absolute", inset:0, display:"flex",
+          alignItems:"center", justifyContent:"center", pointerEvents:"none", zIndex: 2 }}>
+          <div style={{ width:28, height:28, borderRadius:"50%",
+            border:"2px solid rgba(255,255,255,0.15)",
+            borderTopColor:"rgba(255,255,255,0.85)",
+            animation:"spin 0.7s linear infinite" }} />
+        </div>
+      )}
+
+      {/* Unavailable only after stream/embed fail */}
       {showOpenCard && (
         <div style={{ position:"absolute", inset:0, display:"flex",
           flexDirection:"column", gap:14,
@@ -1197,21 +1318,12 @@ function FeedCard({ play, isActive, warm = false }:
           transform: isActive ? "scale(1)" : "scale(0.9)",
           transition:"all .4s cubic-bezier(0.34,1.1,0.64,1)",
           zIndex: 2 }}>
-          <div style={{ width:64, height:64, borderRadius:"50%",
-            background:"rgba(255,255,255,0.08)",
-            border:"1px solid rgba(255,255,255,0.15)",
-            backdropFilter:"blur(12px)",
-            display:"flex", alignItems:"center", justifyContent:"center",
-            boxShadow:"0 8px 32px rgba(0,0,0,0.4)" }}>
-            <svg width="20" height="22" viewBox="0 0 20 22" fill="white" style={{ marginLeft:2 }}>
-              <path d="M2 2l16 9L2 20V2z"/>
-            </svg>
-          </div>
           <div style={{ fontSize:13, fontWeight:600, color:"rgba(255,255,255,0.9)",
             letterSpacing:"-0.01em", textAlign:"center", padding:"0 24px" }}>
-            {embedFailed
-              ? "This clip is private, deleted, or unavailable in-app."
-              : platformOpenLabel(play.platform)}
+            This clip is private, deleted, or unavailable in-app.
+          </div>
+          <div style={{ fontSize:12, fontWeight:600, color:C.accent }}>
+            {platformOpenLabel(play.platform)}
           </div>
         </div>
       )}
@@ -2193,8 +2305,9 @@ function ClipPage({ play, isActive, warm = false, paused, onTogglePause }: {
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [embedFailed, setEmbedFailed] = useState(false);
-  const owned = play.videoStoragePath;
-  const embedUrl = officialEmbedUrl(play);
+  const streamSrc = useTwitterAutoplay(play, isActive, warm);
+  const autoplaySrc = play.videoStoragePath || streamSrc;
+  const embedUrl = !autoplaySrc ? officialEmbedUrl(play) : null;
   const hasEmbed = Boolean(embedUrl) && !embedFailed;
 
   const cat    = CATEGORIES.find(c => c.id === play.categoryId);
@@ -2203,29 +2316,27 @@ function ClipPage({ play, isActive, warm = false, paused, onTogglePause }: {
   return (
     <div style={{ position:"relative", width:"100%", height:"100%",
       background:"#000", overflow:"hidden" }}
-      onClick={() => { if (owned) onTogglePause(); }}>
+      onClick={() => { if (autoplaySrc) onTogglePause(); }}>
 
       <PlayMediaBackdrop play={play} />
-      {owned && (
-        <NativeClipVideo src={owned} isActive={isActive}
+      {autoplaySrc && (
+        <NativeClipVideo src={autoplaySrc} isActive={isActive}
           paused={paused} videoRef={videoRef} warm={warm} />
       )}
-      {!owned && embedUrl && !embedFailed && (
+      {!autoplaySrc && embedUrl && !embedFailed && (
         <OfficialEmbedPlayer
           embedUrl={embedUrl}
           isActive={isActive}
           onUnavailable={() => setEmbedFailed(true)}
         />
       )}
-      {isActive && !owned && !hasEmbed && (
+      {isActive && !autoplaySrc && !hasEmbed && (
         <div style={{ position:"absolute", inset:0, display:"flex",
           flexDirection:"column", gap:12, alignItems:"center", justifyContent:"center",
           zIndex: 2, padding: 24 }}>
           <div style={{ fontSize:14, fontWeight:600, color:"rgba(255,255,255,0.85)",
             textAlign:"center" }}>
-            {embedFailed
-              ? "This clip is private, deleted, or unavailable in-app."
-              : platformOpenLabel(play.platform)}
+            This clip is private, deleted, or unavailable in-app.
           </div>
           <a href={play.sourceUrl} target="_blank" rel="noopener noreferrer"
             style={{ fontSize:13, fontWeight:600, color:C.accent, textDecoration:"none" }}>
@@ -2866,7 +2977,9 @@ function ImportClipPreview({ url, platformLabel, shortUrl }:
     addedAt: new Date(),
     gradient: ["#1a2440", "#0d0d0f"] as string[],
   }), [url, platform]);
-  const embedUrl = officialEmbedUrl(play as unknown as FeedPlay);
+  const streamSrc = useTwitterAutoplay(play as unknown as FeedPlay, true);
+  const embedUrl = !streamSrc ? officialEmbedUrl(play as unknown as FeedPlay) : null;
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   return (
     <div style={{ margin:"14px 20px 0" }}>
@@ -2874,7 +2987,10 @@ function ImportClipPreview({ url, platformLabel, shortUrl }:
         overflow:"hidden", background:"#000",
         border:`1px solid ${isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)"}` }}>
         <PlayMediaBackdrop play={play as unknown as FeedPlay} />
-        {embedUrl && (
+        {streamSrc && (
+          <NativeClipVideo src={streamSrc} isActive={true} paused={false} videoRef={videoRef} />
+        )}
+        {!streamSrc && embedUrl && (
           <OfficialEmbedPlayer embedUrl={embedUrl} isActive={true} />
         )}
         {/* Platform badge overlay */}

@@ -1,6 +1,6 @@
 # Playbook
 
-Football coaches save play clips from **X (Twitter), TikTok, Instagram, and Facebook** into a categorized digital playbook. Share a link from any app, categorize it, and watch clips in-app via each platform’s **official embed** — no downloading or rehosting third-party video.
+Football coaches save play clips from **X (Twitter), TikTok, Instagram, and Facebook** into a categorized digital playbook. Share a link, categorize it, and **muted-autoplay** clips inside the app — no play tap, no leaving the app for normal public posts.
 
 ## v1 scope
 
@@ -20,8 +20,9 @@ iOS Share Extension → Categorize → ingest-shared-url
         ↓
 plays row: source_url + official embed_url (no social MP4 storage)
         ↓
-PlayReelView → EmbedPlayerView (WKWebView official embed)
-             → LoopingVideoPlayer only for coach-owned uploads
+PlayReelView → LoopingVideoPlayer (X temporary CDN stream, muted autoplay)
+             → EmbedPlayerView (TikTok / IG / FB official embeds + autoplay)
+             → LoopingVideoPlayer for coach-owned uploads
 ```
 
 ### Backend (Supabase)
@@ -29,30 +30,30 @@ PlayReelView → EmbedPlayerView (WKWebView official embed)
 - **`categories`** — hierarchical play types per user
 - **`plays`** — link metadata + official `embed_url` (not re-hosted social video)
 - **`ingest-shared-url`** — detects platform, stores link + official embed URL
-- **`resolve-playback-url`** — returns official embed URL only (no CDN MP4 extraction)
+- **`resolve-playback-url`** — returns official embed URL helpers
 
 ### iOS (SwiftUI)
 
-- **`EmbedPlayerView`** — WKWebView loads official platform embeds
-- **`PlaybackResolver`** — builds official embed URLs from source links
-- **`LoopingVideoPlayer`** — used only for coach-owned uploads in Storage
+- **`LoopingVideoPlayer`** — muted looping AVPlayer autoplay (no play button chrome)
+- **`PlaybackResolver`** — X temporary stream URLs + official embed URLs
+- **`EmbedPlayerView`** — WKWebView official embeds with autoplay kick
 
 ## Supported platforms
 
-| Platform | In-app playback | Method |
+| Platform | In-app autoplay | Method |
 |----------|-----------------|--------|
-| **X / Twitter** | Yes | Official Tweet embed (`platform.twitter.com/embed`) |
-| **TikTok** | Yes | Official embed (`tiktok.com/embed/v2/{id}`) |
-| **Instagram** | Yes* | Official `/embed/captioned/` page |
-| **Facebook** | Yes* | Official `plugins/video.php` embed |
+| **X / Twitter** | Yes | Temporary muted CDN stream at view time (not stored) |
+| **TikTok** | Yes* | Official embed (`tiktok.com/embed/v2/{id}?autoplay=1`) |
+| **Instagram** | Yes* | Official `/embed/` page |
+| **Facebook** | Yes* | Official `plugins/video.php` with `autoplay=true&mute=1` |
 
 \* Private, deleted, or login-walled posts fall back to “Open in [platform]”.
 
 ## App Store compliance notes
 
-- **Guideline 5.2.3:** We do **not** download, convert, or rehost third-party social video. Playback uses official embeds; Storage is for coach-owned uploads only.
+- **Guideline 5.2.3:** We do **not** download or rehost third-party social video into Storage. X streams are temporary session URLs for muted in-app playback only. Storage is for coach-owned uploads.
 - Creator attribution and a **Source** link to the original post are always shown.
-- Unavailable embeds show a graceful open-on-platform prompt.
+- Unavailable clips show a graceful open-on-platform prompt.
 
 ## Prerequisites
 
