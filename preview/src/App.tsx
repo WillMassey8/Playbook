@@ -4501,7 +4501,7 @@ type OnboardingPain =
   | "like_nosave" | "save_noutilize" | "screenshots_chat" | "install_gap"
   | "save_forget" | "cant_find" | "group_chat_lost" | "scroll_again";
 type OnboardingVolume = "light" | "medium" | "heavy" | "constant";
-type OnboardingPlan = "annual" | "weekly" | "free" | "team5" | "team10";
+type OnboardingPlan = "annual" | "weekly" | "team5" | "team10";
 
 type OnboardingAnswers = {
   userType: OnboardingUserType | null;
@@ -5217,7 +5217,7 @@ function ReverseTrialSheet({ onAccept, onDecline }:
               padding:"16px 0 0", cursor:"pointer",
               fontSize:14, color:STEEP.graphite, letterSpacing:"-0.009em",
               fontFamily:STEEP.sans }}>
-            Continue with free (5 clips)
+            No thanks
           </button>
         </div>
       </div>
@@ -5252,11 +5252,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
     clearAdvanceTimer();
     if (step === "paywall") {
       // Paid plan on a real device → trigger the native Apple purchase and wait
-      // for the result before advancing. Free plan / browser preview → proceed.
-      if (answers.plan === "free") {
-        setShowReverseTrial(true);
-        return;
-      }
+      // for the result before advancing. Browser preview → proceed.
       if (NativeBridge.available) {
         NativeBridge.purchase(answers.plan);
         return;
@@ -5324,9 +5320,9 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
     if (step === "commit")  return "Set up my playbook";
     if (step === "preview") return "See plans";
     if (step === "paywall") {
-      if (answers.plan === "free") return "Continue with Free";
       if (answers.plan === "team5" || answers.plan === "team10") return "Get the Team plan";
-      return "Get Unlimited";
+      if (answers.plan === "weekly") return "Start Weekly";
+      return "Start Annual";
     }
     return "Continue";
   })();
@@ -5348,7 +5344,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
     setAnswers(a => ({ ...a, plan: tab === "team" ? "team5" : "annual" }));
   }
 
-  function tryExitToFree() {
+  function trySoftExit() {
     setShowReverseTrial(true);
   }
 
@@ -5651,11 +5647,11 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                     selected={answers.plan === "annual"}
                     onClick={() => setAnswers(a => ({ ...a, plan:"annual" }))}
                     name="Annual"
-                    price="$1.15/wk"
-                    sublabel="$59.99/year · unlimited playbook saves"
+                    price="$0.96/wk"
+                    sublabel="$49.99/year · unlimited playbook saves"
                     badge="Best value"
                     badgeBg={STEEP.rust}
-                    savings="Save 81%"
+                    savings="Save 84%"
                   />
 
                   {/* Weekly */}
@@ -5665,15 +5661,6 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                     name="Weekly"
                     price="$5.99/wk"
                     sublabel="Unlimited playbook saves · billed weekly"
-                  />
-
-                  {/* Free — buried; exit triggers reverse trial */}
-                  <PaywallPlanCard
-                    selected={answers.plan === "free"}
-                    onClick={() => setAnswers(a => ({ ...a, plan:"free" }))}
-                    name="Free"
-                    price="$0"
-                    sublabel="Save up to 5 plays · browse the full feed"
                   />
                 </>
               ) : (
@@ -5738,20 +5725,20 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
           borderTop:`1px solid rgba(167,170,175,0.18)`,
           background: STEEP.white }}>
           <GlowButton label={continueLabel} onPress={goNext} disabled={!canContinue} />
-          {step === "paywall" && answers.plan !== "free" && (
+          {step === "paywall" && (
             <button type="button"
-              onClick={tryExitToFree}
+              onClick={trySoftExit}
               style={{ width:"100%", background:"none", border:"none",
                 padding:"14px 0 0", cursor:"pointer",
                 fontSize:14, color:STEEP.graphite, letterSpacing:"-0.009em",
                 fontFamily:STEEP.sans }}>
-              Continue with the Free plan
+              Not now
             </button>
           )}
         </div>
       )}
 
-      {/* Reverse trial — intercept free exit / free CTA */}
+      {/* Soft exit → 14-day trial offer (no free tier) */}
       {showReverseTrial && (
         <ReverseTrialSheet
           onAccept={() => {
@@ -5764,9 +5751,8 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
             onComplete();
           }}
           onDecline={() => {
+            // Stay on the paywall — no free bypass for now.
             setShowReverseTrial(false);
-            setAnswers(a => ({ ...a, plan:"free" }));
-            onComplete();
           }}
         />
       )}
