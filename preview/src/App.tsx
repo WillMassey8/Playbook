@@ -4491,10 +4491,12 @@ function GlowButton({ label, onPress, accent = false, disabled = false }:
 
 // ─── ONBOARDING ───────────────────────────────────────────────────────────────
 // Reverse-engineered from high-converting quiz → paywall funnels (Noom / Cal AI /
-// Duolingo): short commitment ladder, personalization theater, annual default,
-// reverse-trial save. Coach pains reflect doom-scroll → like → lost, NOT re-search.
+// Duolingo): identity → mid-funnel value proof → commitment → annual default →
+// reverse-trial save. Coach pains = doom-scroll → like → lost, NOT re-search.
 type OnboardingUserType = "coach" | "fan";
 type OnboardingLevel = "hs" | "college" | "youth" | "pro";
+type OnboardingRole = "head" | "oc" | "dc" | "position" | "analyst";
+type OnboardingFocus = "install" | "scout" | "scheme" | "teach";
 type OnboardingStaff = "solo" | "staff" | "large";
 type OnboardingPain =
   // Coach — capture / system failure (not "I can't find that one play")
@@ -4507,6 +4509,8 @@ type OnboardingPlan = "annual" | "monthly" | "free" | "team5" | "team10";
 type OnboardingAnswers = {
   userType: OnboardingUserType | null;
   level: OnboardingLevel | null;
+  role: OnboardingRole | null;
+  focus: OnboardingFocus | null;
   staff: OnboardingStaff | null;
   pain: OnboardingPain | null;
   volume: OnboardingVolume | null;
@@ -4514,19 +4518,158 @@ type OnboardingAnswers = {
 };
 
 type OnboardingStepId =
-  | "who" | "level" | "staff" | "pain" | "volume" | "commit"
+  | "who" | "level" | "role" | "focus" | "value" | "staff"
+  | "pain" | "volume" | "commit"
   | "building" | "preview" | "paywall";
 
-// Coach: who → level → staff → pain → volume → commit → building → preview → paywall
-// Fan:   who → pain → volume → commit → building → preview → paywall
+// Coach: identity → value proof → friction → commit → theater → paywall
+// Fan:   who → value → pain → volume → commit → theater → paywall
 function onboardingSteps(userType: OnboardingUserType | null): OnboardingStepId[] {
   if (userType === "coach") {
-    return ["who", "level", "staff", "pain", "volume", "commit", "building", "preview", "paywall"];
+    return [
+      "who", "level", "role", "focus", "value", "staff",
+      "pain", "volume", "commit", "building", "preview", "paywall",
+    ];
   }
   if (userType === "fan") {
-    return ["who", "pain", "volume", "commit", "building", "preview", "paywall"];
+    return ["who", "value", "pain", "volume", "commit", "building", "preview", "paywall"];
   }
   return ["who"];
+}
+
+const COACH_ROLES: { id: OnboardingRole; label: string; hint: string }[] = [
+  { id: "head",     label: "Head coach",              hint: "Own the whole book" },
+  { id: "oc",       label: "Offensive coordinator",   hint: "Install + scheme" },
+  { id: "dc",       label: "Defensive coordinator",   hint: "Fronts, covers, pressure" },
+  { id: "position", label: "Position coach",          hint: "Your room's tape" },
+  { id: "analyst",  label: "Analyst / quality control", hint: "Scout + cutups" },
+];
+
+const COACH_FOCUSES: { id: OnboardingFocus; label: string }[] = [
+  { id: "install", label: "Installing our own concepts" },
+  { id: "scout",   label: "Scouting opponents" },
+  { id: "scheme",  label: "Collecting scheme / trend ideas" },
+  { id: "teach",   label: "Teaching players (or parents)" },
+];
+
+const LEVEL_LABEL: Record<OnboardingLevel, string> = {
+  hs: "High school", college: "College", youth: "Youth", pro: "Pro",
+};
+
+const ROLE_LABEL: Record<OnboardingRole, string> = {
+  head: "Head coach",
+  oc: "Offensive coordinator",
+  dc: "Defensive coordinator",
+  position: "Position coach",
+  analyst: "Analyst",
+};
+
+type PlaybookBlueprint = {
+  identityLine: string;
+  folders: { name: string; subs: string[] }[];
+  valueLines: string[];
+  shareLine: string;
+};
+
+/** Build a personalized mini-playbook from coach identity — shown mid-funnel as value proof. */
+function coachPlaybook(answers: OnboardingAnswers): PlaybookBlueprint {
+  const level = answers.level ? LEVEL_LABEL[answers.level] : "Football";
+  const role = answers.role ? ROLE_LABEL[answers.role] : "Coach";
+  const identityLine = `${level} · ${role}`;
+
+  const byRole: Record<OnboardingRole, { name: string; subs: string[] }[]> = {
+    head: [
+      { name: "Offense",  subs: ["Pass game", "Run game", "Red zone"] },
+      { name: "Defense",  subs: ["Fronts", "Coverage", "Pressure"] },
+      { name: "Specials", subs: ["Returns", "Protection"] },
+    ],
+    oc: [
+      { name: "Pass concepts", subs: ["RPO", "Dropback", "Screens"] },
+      { name: "Run game",      subs: ["Inside zone", "Gap", "Toss"] },
+      { name: "Situational",   subs: ["3rd down", "Red zone", "2-minute"] },
+    ],
+    dc: [
+      { name: "Fronts",    subs: ["Odd", "Even", "Okie"] },
+      { name: "Coverage",  subs: ["Man", "Zone", "Match"] },
+      { name: "Pressure",  subs: ["Sim pressures", "Blitz", "Games"] },
+    ],
+    position: [
+      { name: "My room",   subs: ["Technique", "Drills", "Teach tape"] },
+      { name: "Concepts",  subs: ["Must-haves", "Install week"] },
+      { name: "Opponents", subs: ["Tendencies", "Personnel"] },
+    ],
+    analyst: [
+      { name: "Scout",     subs: ["Formations", "Tendencies", "Personnel"] },
+      { name: "Cutups",    subs: ["Self scout", "Opponent", "Situational"] },
+      { name: "Trends",    subs: ["College", "NFL", "High school"] },
+    ],
+  };
+
+  const folders = [...((answers.role && byRole[answers.role]) || byRole.head)].map(f => ({
+    name: f.name,
+    subs: [...f.subs],
+  }));
+
+  // Nudge top folder names toward their focus
+  if (answers.focus === "scout" && folders[0] && !folders[0].name.toLowerCase().includes("scout")) {
+    folders[0] = { ...folders[0], name: `${folders[0].name} · Scout` };
+  }
+
+  const valueByFocus: Record<OnboardingFocus, string[]> = {
+    install: [
+      "Save a concept from X → it lands in Install, not your camera roll",
+      "Build weekly install folders your staff can actually open",
+      "Pull last week's teach tape in seconds before practice",
+    ],
+    scout: [
+      "Drop opponent clips into Scout instead of a dead group chat",
+      "Tag formation + tendency so cutups build themselves",
+      "Share one scout book with the whole staff",
+    ],
+    scheme: [
+      "Keep scheme inspiration organized by concept, not by app",
+      "Turn doom-scroll likes into a living idea library",
+      "Find that RPO you liked in August — without re-scrolling",
+    ],
+    teach: [
+      "Send players (or parents) one clean clip, not a chat dump",
+      "Keep teach tape labeled by drill and week",
+      "Reuse last season's examples without digging through photos",
+    ],
+  };
+
+  const valueLines = answers.focus
+    ? valueByFocus[answers.focus]
+    : [
+        "Share from X or Instagram — one tap into your book",
+        "Categories that match how you coach",
+        "Your staff sees the same playbook — not three chats",
+      ];
+
+  const shareLine = answers.focus === "scout"
+    ? "Share an opponent clip from X → categorize → staff sees it"
+    : answers.focus === "install"
+    ? "Share a concept from Instagram → drops into this week's install"
+    : "Share from X or Instagram → categorized in your playbook";
+
+  return { identityLine, folders, valueLines, shareLine };
+}
+
+function fanPlaybook(): PlaybookBlueprint {
+  return {
+    identityLine: "Football fan",
+    folders: [
+      { name: "My team",   subs: ["Offense", "Defense", "Highlights"] },
+      { name: "Favorites", subs: ["Must rewatch", "Send to friends"] },
+      { name: "Trends",    subs: ["College", "NFL", "Creators"] },
+    ],
+    valueLines: [
+      "Save from X or Instagram in one tap",
+      "Stop losing clips in your camera roll",
+      "Find any play in seconds — not in a chat",
+    ],
+    shareLine: "Share a clip → it lands in your personal playbook",
+  };
 }
 
 const COACH_PAINS: { id: OnboardingPain; label: string }[] = [
@@ -4648,11 +4791,83 @@ function OnboardingStepShell({ title, subtitle, children }: {
   );
 }
 
+/** Mid-funnel value proof: show a playbook shaped like THEM before asking for money. */
+function ValueRevealStep({ answers }: { answers: OnboardingAnswers }) {
+  const book = answers.userType === "fan" ? fanPlaybook() : coachPlaybook(answers);
+  return (
+    <OnboardingStepShell
+      title={answers.userType === "fan"
+        ? "This is your personal playbook"
+        : "This is your playbook"}
+      subtitle={answers.userType === "fan"
+        ? "Built for how fans actually save football."
+        : `Personalized for a ${book.identityLine.toLowerCase()}.`}>
+
+      {/* Mini playbook UI */}
+      <div style={{
+        background: STEEP.ink, borderRadius:20, padding:"16px 16px 14px",
+        color:"#fff", position:"relative", overflow:"hidden",
+      }}>
+        <div style={{ position:"absolute", top:-30, right:-20, width:110, height:110,
+          borderRadius:"50%", pointerEvents:"none",
+          background:`radial-gradient(circle, ${STEEP.rust}55 0%, transparent 70%)` }} />
+        <div style={{ fontSize:11, fontWeight:600, letterSpacing:"0.1em",
+          textTransform:"uppercase", color:"rgba(255,255,255,0.55)", marginBottom:6,
+          position:"relative" }}>
+          {book.identityLine}
+        </div>
+        <div style={{ fontFamily:STEEP.serif, fontSize:22, letterSpacing:"-0.02em",
+          marginBottom:14, position:"relative" }}>
+          Playbook
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8, position:"relative" }}>
+          {book.folders.map(folder => (
+            <div key={folder.name} style={{
+              background:"rgba(255,255,255,0.08)", borderRadius:12,
+              padding:"10px 12px",
+              border:"1px solid rgba(255,255,255,0.08)",
+            }}>
+              <div style={{ fontSize:14, fontWeight:600, marginBottom:4 }}>{folder.name}</div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                {folder.subs.map(sub => (
+                  <span key={sub} style={{
+                    fontSize:11, color:"rgba(255,255,255,0.7)",
+                    background:"rgba(255,255,255,0.08)",
+                    padding:"3px 8px", borderRadius:99,
+                  }}>{sub}</span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Product value lines */}
+      <div style={{ display:"flex", flexDirection:"column", gap:4, marginTop:4 }}>
+        {book.valueLines.map(line => (
+          <PreviewLine key={line} text={line} />
+        ))}
+      </div>
+
+      <div style={{
+        marginTop:4, padding:"12px 14px", borderRadius:14,
+        background: STEEP.apricotWash,
+        border:`1px solid ${STEEP.rust}33`,
+        fontSize:13, color:STEEP.ink, lineHeight:1.45, letterSpacing:"-0.009em",
+      }}>
+        <span style={{ fontWeight:600, color:STEEP.rust }}>How it works · </span>
+        {book.shareLine}
+      </div>
+    </OnboardingStepShell>
+  );
+}
+
 // "Building your playbook..." animated loader — Noom-style proof of effort
-function BuildingPlaybookStep({ onDone, userType, pain }:
-  { onDone:()=>void; userType: OnboardingUserType | null; pain: OnboardingPain | null }) {
+function BuildingPlaybookStep({ onDone, answers }:
+  { onDone:()=>void; answers: OnboardingAnswers }) {
   const [progress, setProgress] = useState(0);
-  const stages = userType === "fan"
+  const roleName = answers.role ? ROLE_LABEL[answers.role] : "coach";
+  const stages = answers.userType === "fan"
     ? [
         "Reading how you save plays",
         "Building your personal library",
@@ -4660,9 +4875,14 @@ function BuildingPlaybookStep({ onDone, userType, pain }:
         "Locking in your categories",
       ]
     : [
-        pain === "install_gap" ? "Mapping install & game-prep use" : "Reading your coaching workflow",
-        pain === "screenshots_chat" ? "Replacing screenshots & group chats" : "Building your team playbook",
-        pain === "like_nosave" ? "Closing the gap between like and save" : "Tuning clip categories",
+        `Tuning a ${roleName.toLowerCase()} playbook`,
+        answers.focus === "scout" ? "Setting up opponent scout folders"
+          : answers.focus === "install" ? "Laying out install categories"
+          : answers.focus === "teach" ? "Building teach-tape folders"
+          : "Organizing scheme & trend folders",
+        answers.pain === "screenshots_chat" ? "Replacing screenshots & group chats"
+          : answers.pain === "like_nosave" ? "Closing the gap between like and save"
+          : "Wiring X & Instagram share",
         "Calibrating your playbook",
       ];
   const [stage, setStage] = useState(0);
@@ -4728,19 +4948,15 @@ function BuildingPlaybookStep({ onDone, userType, pain }:
 function PlanPreviewStep({ answers }: { answers: OnboardingAnswers }) {
   const monthly = estimateMonthlyClips(answers.volume);
   const yearly = monthly * 12;
-
-  const role = answers.userType === "fan" ? "fan" : "coach";
-  const levelLabel: Record<OnboardingLevel, string> = {
-    hs: "high school", college: "college", youth: "youth", pro: "pro",
-  };
-  const roleLine = answers.userType === "coach" && answers.level
-    ? `${levelLabel[answers.level]} coach`
-    : role;
+  const book = answers.userType === "fan" ? fanPlaybook() : coachPlaybook(answers);
+  const topFolders = book.folders.map(f => f.name).slice(0, 3).join(" · ");
 
   return (
     <OnboardingStepShell
       title="Your playbook is ready"
-      subtitle="Built from how you actually watch football — not how apps think you should.">
+      subtitle={answers.userType === "coach"
+        ? `Built for a ${book.identityLine.toLowerCase()} — not a generic coach.`
+        : "Built from how you actually watch football."}>
 
       {/* Hero stat card */}
       <div style={{
@@ -4756,7 +4972,7 @@ function PlanPreviewStep({ answers }: { answers: OnboardingAnswers }) {
         <div style={{ fontSize:11, color:STEEP.rust, fontWeight:600,
           letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8,
           position:"relative" }}>
-          Built for a {roleLine}
+          {book.identityLine}
         </div>
         <div style={{ display:"flex", alignItems:"baseline", gap:8, marginBottom:6 }}>
           <span style={{ fontFamily:STEEP.serif, fontSize:48, fontWeight:400,
@@ -4769,7 +4985,7 @@ function PlanPreviewStep({ answers }: { answers: OnboardingAnswers }) {
           </span>
         </div>
         <div style={{ fontSize:13, color:STEEP.graphite, lineHeight:1.5 }}>
-          ≈ {monthly} worth-keeping plays a month — organized, not lost
+          ≈ {monthly} / month into {topFolders || "your categories"}
         </div>
       </div>
 
@@ -4778,11 +4994,11 @@ function PlanPreviewStep({ answers }: { answers: OnboardingAnswers }) {
         {answers.pain && (
           <PreviewLine text={painPreviewLine(answers.pain)} />
         )}
-        <PreviewLine text="Share from X & Instagram — one tap into your book" />
+        <PreviewLine text={book.shareLine} />
         <PreviewLine text={
           answers.userType === "coach" && (answers.staff === "staff" || answers.staff === "large")
             ? "Shared playbook for your whole staff"
-            : "Categories that match how you think about football"
+            : book.valueLines[0]
         } />
       </div>
     </OnboardingStepShell>
@@ -4941,7 +5157,7 @@ function ReverseTrialSheet({ onAccept, onDecline }:
 function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()=>void }) {
   const [stepIdx, setStepIdx] = useState(0);
   const [answers, setAnswers] = useState<OnboardingAnswers>({
-    userType: null, level: null, staff: null,
+    userType: null, level: null, role: null, focus: null, staff: null,
     pain: null, volume: null,
     plan: "annual", // Annual default — conversion-backed
   });
@@ -5018,6 +5234,9 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
     switch (step) {
       case "who":      return answers.userType !== null;
       case "level":    return answers.level !== null;
+      case "role":     return answers.role !== null;
+      case "focus":    return answers.focus !== null;
+      case "value":    return true;
       case "staff":    return answers.staff !== null;
       case "pain":     return answers.pain !== null;
       case "volume":   return answers.volume !== null;
@@ -5030,6 +5249,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
   })();
 
   const continueLabel = (() => {
+    if (step === "value")   return "Looks right — continue";
     if (step === "commit")  return "Build my playbook";
     if (step === "preview") return "See my plan";
     if (step === "paywall") {
@@ -5069,8 +5289,9 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
   // On building step, hide the top progress bar
   const hideTopBar = step === "building";
   const hideFooter = step === "building" || (
-    // Question steps auto-advance on tap — footer only for commit / preview / paywall
-    step === "who" || step === "level" || step === "staff" || step === "pain" || step === "volume"
+    // Question steps auto-advance on tap — footer for value / commit / preview / paywall
+    step === "who" || step === "level" || step === "role" || step === "focus"
+    || step === "staff" || step === "pain" || step === "volume"
   );
 
   const painOptions = answers.userType === "fan" ? FAN_PAINS : COACH_PAINS;
@@ -5078,9 +5299,24 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
     if (answers.userType === "fan") {
       return { quote: "Finally stopped losing clips in my camera roll.", by: "Marcus, football fan" };
     }
+    // Prefer role-matched proof so it feels like "coaches like me"
+    switch (answers.role) {
+      case "oc":
+        return { quote: "Install week is cleaner — concepts land in the right folder.", by: "OC, high school" };
+      case "dc":
+        return { quote: "Opponent scout used to live in a chat. Now the staff opens one book.", by: "DC, 5A" };
+      case "position":
+        return { quote: "My room's teach tape is finally searchable.", by: "WR coach, college" };
+      case "analyst":
+        return { quote: "Cutups start themselves when clips are tagged on the way in.", by: "QC, FCS" };
+      case "head":
+        return { quote: "Whole staff sees the same playbook — not three different chats.", by: "HC, high school" };
+      default:
+        break;
+    }
     switch (answers.level) {
       case "college": return { quote: "Our staff actually uses the same playbook now.", by: "OC, D2 program" };
-      case "youth":   return { quote: "Parents used to Text me clips. Now they land in one place.", by: "Youth HC" };
+      case "youth":   return { quote: "Parents used to text me clips. Now they land in one place.", by: "Youth HC" };
       case "pro":     return { quote: "Faster than digging through old group threads.", by: "NFL quality control" };
       default:        return { quote: "Replaced screenshots, chats, and three half-baked folders.", by: "Coach Daniels, HS football" };
     }
@@ -5147,7 +5383,9 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
             <OnboardingOption label="I'm a coach" selected={answers.userType === "coach"}
               onClick={() => pickAndAdvance({ userType:"coach" })} />
             <OnboardingOption label="I'm a fan" selected={answers.userType === "fan"}
-              onClick={() => pickAndAdvance({ userType:"fan", level:null, staff:null })} />
+              onClick={() => pickAndAdvance({
+                userType:"fan", level:null, role:null, focus:null, staff:null,
+              })} />
           </OnboardingStepShell>
         )}
 
@@ -5166,6 +5404,37 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                 onClick={() => pickAndAdvance({ level:id })} />
             ))}
           </OnboardingStepShell>
+        )}
+
+        {step === "role" && (
+          <OnboardingStepShell
+            title="What kind of coach are you?"
+            subtitle="This shapes the folders we build for you.">
+            {COACH_ROLES.map(({ id, label, hint }) => (
+              <OnboardingOption
+                key={id}
+                label={`${label}  ·  ${hint}`}
+                selected={answers.role === id}
+                onClick={() => pickAndAdvance({ role:id })}
+              />
+            ))}
+          </OnboardingStepShell>
+        )}
+
+        {step === "focus" && (
+          <OnboardingStepShell
+            title="What do you mostly save plays for?"
+            subtitle="Be specific — this is how we prove the product fits you.">
+            {COACH_FOCUSES.map(({ id, label }) => (
+              <OnboardingOption key={id} label={label}
+                selected={answers.focus === id}
+                onClick={() => pickAndAdvance({ focus:id })} />
+            ))}
+          </OnboardingStepShell>
+        )}
+
+        {step === "value" && (
+          <ValueRevealStep answers={answers} />
         )}
 
         {step === "staff" && (
@@ -5222,7 +5491,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
             title={answers.userType === "coach"
               ? "Ready to stop liking plays into the void?"
               : "Ready to keep the plays you actually care about?"}
-            subtitle="Tap below and we'll build your playbook from the answers you just gave.">
+            subtitle="Tap below and we'll lock in the playbook we just showed you.">
             <div style={{
               background: STEEP.white,
               border:`1.5px solid rgba(167,170,175,0.3)`,
@@ -5234,10 +5503,15 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
               </div>
               <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                 <PreviewLine text={
-                  answers.userType === "coach" && answers.level
-                    ? `${{ hs:"High school", college:"College", youth:"Youth", pro:"Pro" }[answers.level]} coach`
-                    : answers.userType === "fan" ? "Football fan" : "Coach"
+                  answers.userType === "coach"
+                    ? coachPlaybook(answers).identityLine
+                    : "Football fan"
                 } />
+                {answers.focus && (
+                  <PreviewLine text={
+                    COACH_FOCUSES.find(f => f.id === answers.focus)?.label ?? ""
+                  } />
+                )}
                 {answers.pain && <PreviewLine text={painPreviewLine(answers.pain)} />}
                 {answers.volume && (
                   <PreviewLine text={`~${estimateMonthlyClips(answers.volume)} worth-keeping plays / month`} />
@@ -5249,8 +5523,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
 
         {step === "building" && (
           <BuildingPlaybookStep
-            userType={answers.userType}
-            pain={answers.pain}
+            answers={answers}
             onDone={buildingDone}
           />
         )}
