@@ -1,3 +1,7 @@
+/**
+ * Resolves an official platform embed URL for in-app WKWebView playback.
+ * Does NOT extract CDN media, download, or rehost third-party video.
+ */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
@@ -7,42 +11,53 @@ const corsHeaders = {
 };
 
 function extractTweetId(url: string): string | null {
-  const match = url.match(/(?:twitter\.com|x\.com)\/\w+\/status\/(\d+)/i);
+  const match = url.match(/(?:twitter\.com|x\.com)\/(?:\w+\/)?status(?:es)?\/(\d+)/i);
   return match?.[1] ?? null;
 }
 
-async function twitterStreamURL(sourceUrl: string): Promise<string | null> {
+function extractTikTokVideoId(url: string): string | null {
+  const videoMatch = url.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/i);
+  if (videoMatch?.[1]) return videoMatch[1];
+  const embedMatch = url.match(/tiktok\.com\/embed(?:\/v2)?\/(\d+)/i);
+  return embedMatch?.[1] ?? null;
+}
+
+function extractInstagramShortcode(url: string): string | null {
+  const match = url.match(
+    /instagram\.com\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/i,
+  );
+  return match?.[1] ?? null;
+}
+
+function officialEmbedURL(sourceUrl: string): string | null {
   const tweetId = extractTweetId(sourceUrl);
-  if (!tweetId) return null;
+  if (tweetId) {
+    return `https://platform.twitter.com/embed/Tweet.html?id=${tweetId}&theme=dark&dnt=true`;
+  }
 
-  const syndicationUrl =
-    `https://cdn.syndication.twimg.com/tweet-result?id=${tweetId}&lang=en&token=0`;
+  const tiktokId = extractTikTokVideoId(sourceUrl);
+  if (tiktokId) {
+    return `https://www.tiktok.com/embed/v2/${tiktokId}`;
+  }
 
-  const response = await fetch(syndicationUrl, {
-    headers: { "User-Agent": "Playbook/1.0 (playback resolver)" },
-  });
+  const igCode = extractInstagramShortcode(sourceUrl);
+  if (igCode) {
+    const isReel = /instagram\.com\/(?:reel|reels)\//i.test(sourceUrl);
+    return `https://www.instagram.com/${isReel ? "reel" : "p"}/${igCode}/embed/captioned/`;
+  }
 
-  if (!response.ok) return null;
-
-  const payload = await response.json();
-  const mediaDetails: Array<Record<string, unknown>> = payload?.mediaDetails ?? [];
-
-  for (const media of mediaDetails) {
-    const type = media.type as string | undefined;
-    if (type !== "video" && type !== "animated_gif") continue;
-
-    const variants = (media.video_info as { variants?: Array<Record<string, unknown>> })
-      ?.variants ?? [];
-
-    const mp4Variants = variants
-      .filter((v) => typeof v.url === "string" && (v.content_type === "video/mp4" || !v.content_type))
-      .map((v) => ({
-        url: v.url as string,
-        bitrate: (v.bitrate as number | undefined) ?? 0,
-      }))
-      .sort((a, b) => b.bitrate - a.bitrate);
-
-    if (mp4Variants.length > 0) return mp4Variants[0].url;
+  try {
+    const host = new URL(sourceUrl).hostname.replace(/^www\./, "").toLowerCase();
+    if (
+      host === "facebook.com" ||
+      host.endsWith(".facebook.com") ||
+      host === "fb.watch" ||
+      host === "fb.com"
+    ) {
+      return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(sourceUrl)}&show_text=false&width=320&height=560&t=0`;
+    }
+  } catch {
+    // ignore
   }
 
   return null;
@@ -83,15 +98,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    const playbackUrl = await twitterStreamURL(body.source_url);
-    if (!playbackUrl) {
-      return new Response(JSON.stringify({ error: "No stream available for this URL" }), {
+    const embedUrl = officialEmbedURL(body.source_url);
+    if (!embedUrl) {
+      return new Response(JSON.stringify({ error: "No official embed for this URL" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    return new Response(JSON.stringify({ playback_url: playbackUrl }), {
+    return new Response(JSON.stringify({ embed_url: embedUrl }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {

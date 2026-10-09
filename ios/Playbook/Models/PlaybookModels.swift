@@ -10,6 +10,8 @@ enum PlayStatus: String, Codable, Sendable {
 enum SourcePlatform: String, Codable, Sendable {
     case twitter
     case instagram
+    case tiktok
+    case facebook
     case unknown
 }
 

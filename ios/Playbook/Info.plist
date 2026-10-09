@@ -20,6 +20,10 @@
         <string>twitter</string>
         <string>x</string>
         <string>instagram</string>
+        <string>tiktok</string>
+        <string>snssdk1233</string>
+        <string>fb</string>
+        <string>facebook</string>
     </array>
     <key>SUPABASE_URL</key>
     <string>https://riwjijzjqfdsfocnzria.supabase.co</string>

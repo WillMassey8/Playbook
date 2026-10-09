@@ -6,7 +6,12 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-type SourcePlatform = "twitter" | "instagram" | "unknown";
+type SourcePlatform =
+  | "twitter"
+  | "instagram"
+  | "tiktok"
+  | "facebook"
+  | "unknown";
 
 interface IngestRequest {
   source_url: string;
@@ -22,12 +27,34 @@ interface LinkMetadata {
 
 function detectPlatform(url: string): SourcePlatform {
   try {
-    const host = new URL(url).hostname.replace(/^www\./, "");
-    if (host === "twitter.com" || host === "x.com" || host === "mobile.twitter.com") {
+    const host = new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+    if (
+      host === "twitter.com" ||
+      host === "x.com" ||
+      host === "mobile.twitter.com" ||
+      host === "mobile.x.com"
+    ) {
       return "twitter";
     }
-    if (host === "instagram.com" || host === "www.instagram.com") {
+    if (host === "instagram.com" || host.endsWith(".instagram.com")) {
       return "instagram";
+    }
+    if (
+      host === "tiktok.com" ||
+      host.endsWith(".tiktok.com") ||
+      host === "vm.tiktok.com" ||
+      host === "vt.tiktok.com"
+    ) {
+      return "tiktok";
+    }
+    if (
+      host === "facebook.com" ||
+      host.endsWith(".facebook.com") ||
+      host === "fb.watch" ||
+      host === "fb.com" ||
+      host === "m.facebook.com"
+    ) {
+      return "facebook";
     }
   } catch {
     // ignore
@@ -36,12 +63,42 @@ function detectPlatform(url: string): SourcePlatform {
 }
 
 function extractTweetId(url: string): string | null {
-  const match = url.match(/(?:twitter\.com|x\.com)\/\w+\/status\/(\d+)/i);
+  const match = url.match(/(?:twitter\.com|x\.com)\/(?:\w+\/)?status(?:es)?\/(\d+)/i);
+  return match?.[1] ?? null;
+}
+
+function extractTikTokVideoId(url: string): string | null {
+  const videoMatch = url.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/i);
+  if (videoMatch?.[1]) return videoMatch[1];
+  const embedMatch = url.match(/tiktok\.com\/embed(?:\/v2)?\/(\d+)/i);
+  if (embedMatch?.[1]) return embedMatch[1];
+  return null;
+}
+
+function extractInstagramShortcode(url: string): string | null {
+  const match = url.match(
+    /instagram\.com\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/i,
+  );
   return match?.[1] ?? null;
 }
 
 function twitterEmbedUrl(tweetId: string): string {
   return `https://platform.twitter.com/embed/Tweet.html?id=${tweetId}&theme=dark&dnt=true`;
+}
+
+function tiktokEmbedUrl(videoId: string): string {
+  return `https://www.tiktok.com/embed/v2/${videoId}`;
+}
+
+function instagramEmbedUrl(shortcode: string, sourceUrl: string): string {
+  const isReel = /instagram\.com\/(?:reel|reels)\//i.test(sourceUrl);
+  const kind = isReel ? "reel" : "p";
+  return `https://www.instagram.com/${kind}/${shortcode}/embed/captioned/`;
+}
+
+function facebookEmbedUrl(sourceUrl: string): string {
+  const href = encodeURIComponent(sourceUrl);
+  return `https://www.facebook.com/plugins/video.php?href=${href}&show_text=false&width=320&height=560&t=0`;
 }
 
 async function fetchTwitterOEmbed(url: string): Promise<Partial<LinkMetadata>> {
@@ -63,6 +120,30 @@ async function fetchTwitterOEmbed(url: string): Promise<Partial<LinkMetadata>> {
   return { title };
 }
 
+async function fetchTikTokOEmbed(url: string): Promise<Partial<LinkMetadata>> {
+  try {
+    const response = await fetch(
+      `https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`,
+      { headers: { "User-Agent": "Playbook/1.0 (link organizer)" } },
+    );
+    if (!response.ok) return {};
+    const payload = await response.json() as {
+      title?: string;
+      author_name?: string;
+      thumbnail_url?: string;
+    };
+    const title = payload.author_name
+      ? `${payload.title ?? "TikTok"} · @${payload.author_name}`
+      : payload.title;
+    return {
+      title,
+      thumbnailUrl: payload.thumbnail_url,
+    };
+  } catch {
+    return {};
+  }
+}
+
 async function resolveLinkMetadata(
   platform: SourcePlatform,
   url: string,
@@ -72,18 +153,36 @@ async function resolveLinkMetadata(
     if (!tweetId) {
       return { title: "X post" };
     }
-
     const oembed = await fetchTwitterOEmbed(url);
     return {
-      title: oembed.title,
+      title: oembed.title ?? "X post",
       embedUrl: twitterEmbedUrl(tweetId),
     };
   }
 
+  if (platform === "tiktok") {
+    const videoId = extractTikTokVideoId(url);
+    const oembed = await fetchTikTokOEmbed(url);
+    return {
+      title: oembed.title ?? "TikTok video",
+      thumbnailUrl: oembed.thumbnailUrl,
+      // Short links (vm.tiktok.com) may lack an id until expanded; client can fall back.
+      embedUrl: videoId ? tiktokEmbedUrl(videoId) : undefined,
+    };
+  }
+
   if (platform === "instagram") {
+    const shortcode = extractInstagramShortcode(url);
     return {
       title: "Instagram post",
-      // No embed URL — playback opens in Instagram (platform policy).
+      embedUrl: shortcode ? instagramEmbedUrl(shortcode, url) : undefined,
+    };
+  }
+
+  if (platform === "facebook") {
+    return {
+      title: "Facebook video",
+      embedUrl: facebookEmbedUrl(url),
     };
   }
 

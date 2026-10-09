@@ -3,8 +3,12 @@ import Observation
 
 @Observable
 final class ReelViewModel {
+    /// Signed URLs for coach-owned uploads only (never third-party social downloads).
     var signedURLs: [UUID: URL] = [:]
-    var streamURLs: [UUID: URL] = [:]
+    /// Official embed URLs for social platforms.
+    var embedURLs: [UUID: URL] = [:]
+    /// Plays whose embed failed or is unavailable.
+    var unavailableIDs: Set<UUID> = []
     var isLoadingURLs = false
 
     private let service = SupabaseService.shared
@@ -31,16 +35,28 @@ final class ReelViewModel {
     }
 
     @MainActor
-    func resolveStream(for play: Play) async {
-        guard streamURLs[play.id] == nil else { return }
-        guard play.sourcePlatform == .twitter else { return }
-
-        if let url = await PlaybackResolver.twitterStreamURL(sourceURL: play.sourceUrl) {
-            streamURLs[play.id] = url
+    func resolveEmbed(for play: Play) {
+        guard embedURLs[play.id] == nil else { return }
+        if let url = PlaybackResolver.embedURL(for: play) {
+            embedURLs[play.id] = url
         }
     }
 
-    func playbackURL(for play: Play) -> URL? {
-        signedURLs[play.id] ?? streamURLs[play.id]
+    @MainActor
+    func markUnavailable(_ play: Play) {
+        unavailableIDs.insert(play.id)
+    }
+
+    func ownedVideoURL(for play: Play) -> URL? {
+        signedURLs[play.id]
+    }
+
+    func embedURL(for play: Play) -> URL? {
+        guard !unavailableIDs.contains(play.id) else { return nil }
+        return embedURLs[play.id]
+    }
+
+    func canPlayInApp(_ play: Play) -> Bool {
+        ownedVideoURL(for: play) != nil || embedURL(for: play) != nil
     }
 }

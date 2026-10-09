@@ -31,12 +31,12 @@ struct PlayReelView: View {
                 currentIndex = idx
             }
             if let play = current {
-                await vm.resolveStream(for: play)
+                vm.resolveEmbed(for: play)
             }
         }
         .onChange(of: currentIndex) { _, newIndex in
             guard plays.indices.contains(newIndex) else { return }
-            Task { await vm.resolveStream(for: plays[newIndex]) }
+            vm.resolveEmbed(for: plays[newIndex])
         }
     }
 
@@ -73,13 +73,18 @@ struct PlayReelView: View {
 
             thumbnailBackdrop(for: play)
 
-            if isActive, let url = vm.playbackURL(for: play) {
-                LoopingVideoPlayer(url: url)
+            if let owned = vm.ownedVideoURL(for: play), isActive {
+                // Coach-owned uploads only — never third-party social downloads.
+                LoopingVideoPlayer(url: owned)
                     .ignoresSafeArea()
-            } else if play.sourcePlatform == .twitter && isActive && vm.playbackURL(for: play) == nil {
-                ProgressView()
-                    .tint(.white)
-            } else if play.videoStoragePath == nil && play.sourcePlatform != .twitter {
+            } else if let embed = vm.embedURL(for: play), isActive {
+                EmbedPlayerView(
+                    embedURL: embed,
+                    isActive: isActive,
+                    onUnavailable: { vm.markUnavailable(play) }
+                )
+                .ignoresSafeArea()
+            } else if isActive && play.status == .ready && !vm.canPlayInApp(play) {
                 openSourcePrompt(for: play)
             } else if !isActive {
                 Color.clear
@@ -87,7 +92,6 @@ struct PlayReelView: View {
                 placeholderContent(for: play)
             }
 
-            // Bottom info overlay
             if showOverlay {
                 infoOverlay(for: play)
             }
@@ -111,10 +115,12 @@ struct PlayReelView: View {
                 HStack(spacing: Spacing.sm) {
                     PlatformBadge(platform: play.sourcePlatform)
 
-                    Link(destination: URL(string: play.sourceUrl)!) {
-                        Label("Source", systemImage: "arrow.up.right.square")
-                            .font(.pbCaptionBold)
-                            .foregroundStyle(.white.opacity(0.7))
+                    if let source = URL(string: play.sourceUrl) {
+                        Link(destination: source) {
+                            Label("Source", systemImage: "arrow.up.right.square")
+                                .font(.pbCaptionBold)
+                                .foregroundStyle(.white.opacity(0.7))
+                        }
                     }
 
                     Spacer()
@@ -158,16 +164,41 @@ struct PlayReelView: View {
             Image(systemName: "play.rectangle")
                 .font(.system(size: 44))
                 .foregroundStyle(.white.opacity(0.7))
-            Text("Watch on the original platform")
+            Text(unavailableMessage(for: play))
                 .font(.pbCallout)
                 .foregroundStyle(.white.opacity(0.6))
-            Link(destination: URL(string: play.sourceUrl)!) {
-                Label("Open Source", systemImage: "arrow.up.right.square")
-                    .font(.pbCaptionBold)
+                .multilineTextAlignment(.center)
+            if let source = URL(string: play.sourceUrl) {
+                Link(destination: source) {
+                    Label(openLabel(for: play.sourcePlatform), systemImage: "arrow.up.right.square")
+                        .font(.pbCaptionBold)
+                }
+                .foregroundStyle(Color.pbGreen)
             }
-            .foregroundStyle(Color.pbGreen)
         }
         .padding(.horizontal, Spacing.xl)
+    }
+
+    private func unavailableMessage(for play: Play) -> String {
+        if vm.unavailableIDs.contains(play.id) {
+            return "This clip is private, deleted, or unavailable in-app."
+        }
+        switch play.sourcePlatform {
+        case .twitter, .tiktok, .instagram, .facebook:
+            return "Watch on the original platform"
+        case .unknown:
+            return "Open the original link to watch"
+        }
+    }
+
+    private func openLabel(for platform: SourcePlatform) -> String {
+        switch platform {
+        case .twitter:   return "Open on X"
+        case .instagram: return "Open in Instagram"
+        case .tiktok:    return "Open in TikTok"
+        case .facebook:  return "Open in Facebook"
+        case .unknown:   return "Open Source"
+        }
     }
 
     // MARK: - Placeholder states

@@ -139,6 +139,8 @@ struct PlatformBadge: View {
         switch platform {
         case .twitter:   return "bird"
         case .instagram: return "camera"
+        case .tiktok:    return "music.note"
+        case .facebook:  return "person.2.fill"
         case .unknown:   return "link"
         }
     }
@@ -147,6 +149,8 @@ struct PlatformBadge: View {
         switch platform {
         case .twitter:   return "X / Twitter"
         case .instagram: return "Instagram"
+        case .tiktok:    return "TikTok"
+        case .facebook:  return "Facebook"
         case .unknown:   return "Link"
         }
     }
@@ -155,6 +159,8 @@ struct PlatformBadge: View {
         switch platform {
         case .twitter:   return .white
         case .instagram: return Color(red: 1, green: 0.55, blue: 0.25)
+        case .tiktok:    return Color(red: 0.35, green: 0.95, blue: 0.92)
+        case .facebook:  return Color(red: 0.26, green: 0.52, blue: 0.96)
         case .unknown:   return .gray
         }
     }

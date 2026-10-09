@@ -347,8 +347,10 @@ const FEED = [
   { id:"p-new1", categoryId:"12", title:"Direct Snap Sweep – Fake Reverse",  platform:"twitter", sourceUrl:"https://x.com/CoachDanCasey/status/2069447298044620972", savedAt:null, liked:false, views:30500, addedAt: new Date("2026-06-23T15:47:00"), gradient:["#2a1a0d","#0d0d0f"] },
   { id:"p-new2", categoryId:"14", title:"Freeze Option – Under Center",     platform:"twitter", sourceUrl:"https://x.com/CoachDanCasey/status/2069095673417318780", savedAt:null, liked:false, views:65200, addedAt: new Date("2026-06-22T16:30:00"), gradient:["#2a180d","#0d0d0f"] },
   { id:"p1",  categoryId:"4",  title:"Screen Pass – Bubble Concept",        platform:"twitter",   sourceUrl:"https://x.com/CoachDanCasey/status/1980441997854011558", savedAt:"Screen Game", liked:true, views:1840, addedAt: new Date("2026-06-23"), gradient:["#1a2440","#0d0d0f"] },
+  { id:"p-tt1", categoryId:"3", title:"Mesh Concept – TikTok Install",     platform:"tiktok",    sourceUrl:"https://www.tiktok.com/@coachfilm/video/7123456789012345678", savedAt:null, liked:false, views:22100, addedAt: new Date("2026-06-21"), gradient:["#0d2a2a","#0d0d0f"] },
+  { id:"p-fb1", categoryId:"4", title:"Tunnel Screen – Facebook Reel",     platform:"facebook",  sourceUrl:"https://www.facebook.com/reel/123456789012345", savedAt:null, liked:false, views:8800, addedAt: new Date("2026-06-20"), gradient:["#0d1a2a","#0d0d0f"] },
   { id:"p1b", categoryId:"3",  title:"Speed Out Rub – Trips Bunch",         platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/2",   savedAt:null,          liked:false, views: 540, addedAt: new Date("2026-06-14"), gradient:["#1a2840","#0d0d0f"] },
-  { id:"p1c", categoryId:"3",  title:"Mesh Concept – Shallow Cross",        platform:"instagram", sourceUrl:"https://www.instagram.com/p/abc123/",   savedAt:null,          liked:true,  views:2310, addedAt: new Date("2026-06-13"), gradient:["#1a2040","#0d0d0f"] },
+  { id:"p1c", categoryId:"3",  title:"Mesh Concept – Shallow Cross",        platform:"instagram", sourceUrl:"https://www.instagram.com/reel/abc123xyz/",   savedAt:null,          liked:true,  views:2310, addedAt: new Date("2026-06-13"), gradient:["#1a2040","#0d0d0f"] },
   { id:"p1d", categoryId:"3",  title:"Rub Route – Slot vs. Man Cover",      platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/4",   savedAt:"Rub Routes",  liked:false, views: 780, addedAt: new Date("2026-06-12"), gradient:["#162038","#0d0d0f"] },
   { id:"p1e", categoryId:"3",  title:"Drive Concept – TE Drag",             platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/5",   savedAt:null,          liked:true,  views:3100, addedAt: new Date("2026-06-11"), gradient:["#1a2848","#0d0d0f"] },
   { id:"p1f", categoryId:"3",  title:"Switch Release – Trips Stack",        platform:"instagram", sourceUrl:"https://www.instagram.com/p/def456/",   savedAt:null,          liked:false, views: 420, addedAt: new Date("2026-06-10"), gradient:["#14203c","#0d0d0f"] },
@@ -393,9 +395,13 @@ function syncUserPlays(plays: UserPlayItem[]) { USER_PLAYS = plays; saveUserPlay
 // Everything the app shows = imported plays (newest first) + the seeded FEED.
 function allPlays(): UserPlayItem[] { return [...USER_PLAYS, ...FEED]; }
 
-function detectPlatform(url: string): "twitter" | "instagram" {
+type SocialPlatform = "twitter" | "instagram" | "tiktok" | "facebook";
+
+function detectPlatform(url: string): SocialPlatform {
   if (/(?:twitter\.com|x\.com)/i.test(url)) return "twitter";
-  return "instagram"; // instagram + any other link uses the open-source card behavior
+  if (/tiktok\.com|vm\.tiktok/i.test(url)) return "tiktok";
+  if (/facebook\.com|fb\.watch|\bfb\.com\b/i.test(url)) return "facebook";
+  return "instagram";
 }
 
 /** Build a play from a clip categorized in the Share Extension. */
@@ -443,150 +449,134 @@ function playsInCat(catId: string) {
   return allPlays().filter(p => ids.has(p.categoryId));
 }
 
-// ─── Link-based playback (App Store 5.2.3 safe — no re-hosted social video) ───
+// ─── Official embed playback (App Store 5.2.3 safe — no re-hosted social video) ───
 function extractTweetId(url: string): string | null {
-  const m = url.match(/(?:twitter\.com|x\.com)\/\w+\/status\/(\d+)/i);
+  const m = url.match(/(?:twitter\.com|x\.com)\/(?:\w+\/)?status(?:es)?\/(\d+)/i);
+  return m?.[1] ?? null;
+}
+
+function extractTikTokVideoId(url: string): string | null {
+  const m = url.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/i)
+    ?? url.match(/tiktok\.com\/embed(?:\/v2)?\/(\d+)/i);
+  return m?.[1] ?? null;
+}
+
+function extractInstagramShortcode(url: string): string | null {
+  const m = url.match(/instagram\.com\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/i);
   return m?.[1] ?? null;
 }
 
 type FeedPlay = typeof FEED[number] & {
   thumbnailUrl?: string;
   videoStoragePath?: string;
+  embedUrl?: string;
 };
 
-/** Local preview files when the X video CDN blocks browser playback (dev only). */
-const PREVIEW_LOCAL_STREAM: Record<string, string> = {
-  "1980441997854011558": "/sample-play.mp4",
-  "2069447298044620972": "/play-2069447298044620972.mp4",
-  "2069095673417318780": "/play-2069095673417318780.mp4",
-};
-
-/**
- * Token the public syndication endpoint derives from the post id — the same
- * algorithm X's own embed script uses. A placeholder value is rejected for
- * some posts, so compute it properly.
- */
-function syndicationToken(id: string): string {
-  return ((Number(id) / 1e15) * Math.PI).toString(36).replace(/(0+|\.)/g, "");
-}
-
-/**
- * Pick the most compatible mp4 rather than the largest one. The 1080p variant
- * is often a High-profile stream that some browsers refuse, and it buffers
- * slowly on mobile, so prefer the best variant up to ~720p.
- */
-function pickMp4Variant(variants: Array<Record<string, unknown>>): string | null {
-  const mp4s = variants
-    .filter(v => typeof v.url === "string" && (v.content_type === "video/mp4" || !v.content_type))
-    .map(v => ({ url: v.url as string, bitrate: (v.bitrate as number) ?? 0 }))
-    .sort((a, b) => b.bitrate - a.bitrate);
-  if (mp4s.length === 0) return null;
-  const compatible = mp4s.find(v => v.bitrate > 0 && v.bitrate <= 2_500_000);
-  return (compatible ?? mp4s[0]).url;
-}
-
-/**
- * X's CDN refuses `<video>` playback from any other origin, so the stream is
- * relayed through our own origin. Dev uses the Vite middleware, production the
- * /api/video edge function.
- */
-function throughVideoProxy(url: string): string {
-  const base = import.meta.env.DEV ? "/tw-video" : "/api/video";
-  return `${base}?url=${encodeURIComponent(url)}`;
-}
-
-// Resolved stream URLs, kept for the session so swiping back to a clip never
-// pays the syndication round-trip twice. In-flight lookups are shared too, so
-// preloading a neighbour and then landing on it makes a single request.
-const streamCache = new Map<string, string | null>();
-const streamInFlight = new Map<string, Promise<string | null>>();
-
-/** Already-known stream URL for a play, or null if it still needs resolving. */
-function cachedStream(play: FeedPlay | null | undefined): string | null {
+/** Official platform embed URL for in-app iframe / WKWebView playback. */
+function officialEmbedUrl(play: FeedPlay | null | undefined): string | null {
   if (!play) return null;
-  if (play.videoStoragePath) return play.videoStoragePath;
-  if (play.platform !== "twitter") return null;
-  const id = extractTweetId(play.sourceUrl);
-  if (!id) return null;
-  return PREVIEW_LOCAL_STREAM[id] ?? streamCache.get(id) ?? null;
-}
+  if (play.embedUrl) return play.embedUrl;
 
-/** Resolve a temporary X stream URL for playback (not stored). */
-function resolveTwitterStream(sourceUrl: string): Promise<string | null> {
-  const id = extractTweetId(sourceUrl);
-  if (!id) return Promise.resolve(null);
-  if (PREVIEW_LOCAL_STREAM[id]) return Promise.resolve(PREVIEW_LOCAL_STREAM[id]);
-  if (streamCache.has(id)) return Promise.resolve(streamCache.get(id)!);
+  const tweetId = extractTweetId(play.sourceUrl);
+  if (tweetId) {
+    return `https://platform.twitter.com/embed/Tweet.html?id=${tweetId}&theme=dark&dnt=true`;
+  }
 
-  const pending = streamInFlight.get(id);
-  if (pending) return pending;
+  const tiktokId = extractTikTokVideoId(play.sourceUrl);
+  if (tiktokId) {
+    return `https://www.tiktok.com/embed/v2/${tiktokId}`;
+  }
 
-  const lookup = fetchTwitterStream(id).then(url => {
-    streamCache.set(id, url);
-    streamInFlight.delete(id);
-    return url;
-  }, () => {
-    streamInFlight.delete(id);
-    return null;
-  });
-  streamInFlight.set(id, lookup);
-  return lookup;
-}
+  const igCode = extractInstagramShortcode(play.sourceUrl);
+  if (igCode) {
+    const isReel = /instagram\.com\/(?:reel|reels)\//i.test(play.sourceUrl);
+    return `https://www.instagram.com/${isReel ? "reel" : "p"}/${igCode}/embed/captioned/`;
+  }
 
-async function fetchTwitterStream(id: string): Promise<string | null> {
-  try {
-    // Dev uses the Vite proxy; production uses the /api/tweet edge function.
-    const endpoint = import.meta.env.DEV
-      ? `/tw-syndication/tweet-result?id=${id}&lang=en&token=${syndicationToken(id)}`
-      : `/api/tweet?id=${id}`;
-    const res = await fetch(endpoint);
-    if (!res.ok) return null;
-    // A missing /api/tweet route answers with the SPA shell, so only trust JSON.
-    if (!/\bjson\b/i.test(res.headers.get("content-type") ?? "")) return null;
-    const payload = await res.json();
-    const mediaDetails: Array<Record<string, unknown>> = payload?.mediaDetails ?? [];
-    for (const media of mediaDetails) {
-      const type = media.type as string | undefined;
-      if (type !== "video" && type !== "animated_gif") continue;
-      const variants = (media.video_info as { variants?: Array<Record<string, unknown>> })
-        ?.variants ?? [];
-      const url = pickMp4Variant(variants);
-      if (url) return throughVideoProxy(url);
-    }
-  } catch { /* syndication unavailable */ }
+  if (play.platform === "facebook" || /facebook\.com|fb\.watch|\bfb\.com\b/i.test(play.sourceUrl)) {
+    return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(play.sourceUrl)}&show_text=false&width=320&height=560&t=0`;
+  }
+
   return null;
 }
 
-/**
- * Resolve a stream URL for a card. `warm` covers the clips just off-screen so
- * the next swipe plays immediately instead of waiting on a lookup. A cached
- * result is returned synchronously, which keeps the spinner from flashing.
- */
-function usePlaybackStream(
-  play: FeedPlay | null | undefined,
-  isActive: boolean,
-  warm = false,
-) {
-  const [streamUrl, setStreamUrl] = useState<string | null>(() => cachedStream(play));
-  const wanted = isActive || warm;
-
-  useEffect(() => {
-    const known = cachedStream(play);
-    if (known) { setStreamUrl(known); return; }
-    if (!play || !wanted || play.platform !== "twitter") {
-      setStreamUrl(null);
-      return;
-    }
-    let cancelled = false;
-    resolveTwitterStream(play.sourceUrl).then(url => {
-      if (!cancelled) setStreamUrl(url);
-    });
-    return () => { cancelled = true; };
-  }, [wanted, play, play?.platform, play?.sourceUrl]);
-
-  return streamUrl;
+function PlayMediaBackdrop({ play }: { play: FeedPlay }) {
+  if (play.thumbnailUrl) {
+    return (
+      <img src={play.thumbnailUrl} alt=""
+        style={{ position:"absolute", inset:0, width:"100%", height:"100%",
+          objectFit:"cover" }} />
+    );
+  }
+  return (
+    <div style={{ position:"absolute", inset:0,
+      background:`linear-gradient(200deg, ${play.gradient[0]} 0%, #000 100%)` }} />
+  );
 }
 
+function platformOpenLabel(platform: string): string {
+  switch (platform) {
+    case "twitter": return "Open on X";
+    case "tiktok": return "Open in TikTok";
+    case "facebook": return "Open in Facebook";
+    case "instagram": return "Open in Instagram";
+    default: return "Open source";
+  }
+}
+
+function platformViewLabel(platform: string): string {
+  switch (platform) {
+    case "twitter": return "View on X";
+    case "tiktok": return "View on TikTok";
+    case "facebook": return "View on Facebook";
+    case "instagram": return "View on IG";
+    default: return "View source";
+  }
+}
+
+function platformOriginalLabel(platform: string): string {
+  switch (platform) {
+    case "twitter": return "View original on X";
+    case "tiktok": return "View original on TikTok";
+    case "facebook": return "View original on Facebook";
+    case "instagram": return "View original on Instagram";
+    default: return "View original";
+  }
+}
+
+/** Official embed iframe — no CDN MP4 extraction or video proxy. */
+function OfficialEmbedPlayer({
+  embedUrl,
+  isActive,
+  onUnavailable,
+}: {
+  embedUrl: string;
+  isActive: boolean;
+  onUnavailable?: () => void;
+}) {
+  if (!isActive) return null;
+  return (
+    <iframe
+      title="Official platform embed"
+      src={embedUrl}
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+      allowFullScreen
+      referrerPolicy="strict-origin-when-cross-origin"
+      onError={() => onUnavailable?.()}
+      style={{
+        position: "absolute",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        border: "none",
+        background: "#000",
+        zIndex: 1,
+      }}
+    />
+  );
+}
+
+/** Coach-owned uploads only — never third-party social downloads. */
 function NativeClipVideo({ src, isActive, paused, videoRef, warm = false }: {
   src: string; isActive: boolean; paused: boolean;
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -599,8 +589,6 @@ function NativeClipVideo({ src, isActive, paused, videoRef, warm = false }: {
     else v.pause();
   }, [isActive, paused, src, videoRef]);
 
-  // Off-screen neighbours stay mounted so their first frames are already
-  // decoded by the time they scroll into view.
   if (!isActive && !warm) return null;
 
   return (
@@ -618,64 +606,9 @@ function NativeClipVideo({ src, isActive, paused, videoRef, warm = false }: {
   );
 }
 
-function PlayMediaBackdrop({ play }: { play: FeedPlay }) {
-  if (play.thumbnailUrl) {
-    return (
-      <img src={play.thumbnailUrl} alt=""
-        style={{ position:"absolute", inset:0, width:"100%", height:"100%",
-          objectFit:"cover" }} />
-    );
-  }
-  return (
-    <div style={{ position:"absolute", inset:0,
-      background:`linear-gradient(200deg, ${play.gradient[0]} 0%, #000 100%)` }} />
-  );
-}
-
-const previewStreamCache = new Map<string, string>();
-
-/** Resolve a stream URL for playbook grid thumbnails (cached, muted loop). */
-function useClipPreviewStream(play: FeedPlay): string | null {
-  const tweetId = play.platform === "twitter" ? extractTweetId(play.sourceUrl) : null;
-  const [streamUrl, setStreamUrl] = useState<string | null>(() => {
-    if (play.videoStoragePath) return play.videoStoragePath;
-    if (tweetId && PREVIEW_LOCAL_STREAM[tweetId]) return PREVIEW_LOCAL_STREAM[tweetId];
-    if (tweetId && previewStreamCache.has(tweetId)) return previewStreamCache.get(tweetId)!;
-    return null;
-  });
-
-  useEffect(() => {
-    if (streamUrl || play.platform !== "twitter") return;
-    let cancelled = false;
-    resolveTwitterStream(play.sourceUrl).then(url => {
-      if (cancelled || !url) return;
-      if (tweetId) previewStreamCache.set(tweetId, url);
-      setStreamUrl(url);
-    });
-    return () => { cancelled = true; };
-  }, [play.platform, play.sourceUrl, streamUrl, tweetId]);
-
-  return streamUrl;
-}
-
-/** Muted looping video preview for playbook grids and category clips. */
+/** Grid thumbnail — backdrop only (embeds are for full-screen playback). */
 function PlaybookClipPreview({ play }: { play: FeedPlay }) {
-  const src = useClipPreviewStream(play);
-  return (
-    <>
-      <PlayMediaBackdrop play={play} />
-      {src && (
-        <video
-          src={src}
-          muted loop playsInline autoPlay
-          style={{
-            position:"absolute", inset:0, width:"100%", height:"100%",
-            objectFit:"cover", objectPosition:"center",
-          }}
-        />
-      )}
-    </>
-  );
+  return <PlayMediaBackdrop play={play} />;
 }
 
 type Screen =
@@ -694,6 +627,8 @@ function PlatformBadge({ platform }: { platform:string }) {
   const cfg: Record<string, {label:string; color:string; icon:string}> = {
     twitter:   { label:"X / Twitter", color:"#fff",    icon:"𝕏" },
     instagram: { label:"Instagram",   color:C.orange,  icon:"◎" },
+    tiktok:    { label:"TikTok",      color:"#69C9D0", icon:"♪" },
+    facebook:  { label:"Facebook",    color:"#1877F2", icon:"f" },
   };
   const c = cfg[platform] ?? { label:"Link", color:C.muted, icon:"🔗" };
   return (
@@ -1218,47 +1153,25 @@ function FeedCard({ play, isActive, warm = false }:
     }
   }
 
-  const userVideo  = (play as FeedPlay).videoStoragePath;
-  const streamUrl  = usePlaybackStream(play as FeedPlay, isActive, warm);
-  const playbackSrc = userVideo || streamUrl;
-
-  // If an X clip can't resolve a playable stream (e.g. in production, where the
-  // dev-only syndication proxy isn't available), fall back after a moment to a
-  // tappable "open in source" card instead of spinning forever.
-  const [streamTimedOut, setStreamTimedOut] = useState(false);
-  useEffect(() => {
-    setStreamTimedOut(false);
-    if (!isActive || play.platform !== "twitter" || playbackSrc) return;
-    const t = setTimeout(() => setStreamTimedOut(true), 3500);
-    return () => clearTimeout(t);
-  }, [isActive, play.platform, playbackSrc]);
-
-  const showOpenCard = !playbackSrc && (play.platform !== "twitter" || streamTimedOut);
+  const userVideo = (play as FeedPlay).videoStoragePath;
+  const embedUrl = officialEmbedUrl(play as FeedPlay);
+  const [embedFailed, setEmbedFailed] = useState(false);
+  const hasOwnedVideo = Boolean(userVideo);
+  const hasEmbed = Boolean(embedUrl) && !embedFailed;
+  const showOpenCard = isActive && !hasOwnedVideo && !hasEmbed;
   const openSource = () => { if (play.sourceUrl) window.open(play.sourceUrl, "_blank"); };
 
   return (
     <div style={{ width:"100%", height:"100%", position:"relative",
       overflow:"hidden" }}
-      onClick={playbackSrc ? handleTap : (showOpenCard ? openSource : undefined)}>
+      onClick={hasOwnedVideo ? handleTap : (showOpenCard ? openSource : undefined)}>
 
       <PlayMediaBackdrop play={play as FeedPlay} />
 
-      {/* TEMP DEBUG: shows the active card's playback resolution state. */}
-      {isActive && (
-        <div style={{ position:"absolute", top:96, left:8, right:8, zIndex:50,
-          background:"rgba(200,0,0,0.85)", color:"#fff", fontSize:10, lineHeight:1.35,
-          padding:"5px 7px", borderRadius:6, fontFamily:"monospace",
-          pointerEvents:"none", wordBreak:"break-all" }}>
-          plat:{play.platform} · {playbackSrc
-            ? `src:…${String(playbackSrc).slice(-46)}`
-            : (streamTimedOut ? "unresolved (timeout)" : "resolving…")}
-        </div>
-      )}
-
-      {/* Streams from X CDN at view time — muted autoplay, not stored */}
-      {playbackSrc && (
+      {/* Coach-owned uploads only */}
+      {userVideo && (
         <NativeClipVideo
-          src={playbackSrc}
+          src={userVideo}
           isActive={isActive}
           paused={paused}
           videoRef={videoRef}
@@ -1266,47 +1179,24 @@ function FeedCard({ play, isActive, warm = false }:
         />
       )}
 
-      {/* Loading stream */}
-      {isActive && play.platform === "twitter" && !playbackSrc && !streamTimedOut && (
-        <div style={{ position:"absolute", inset:0, display:"flex",
-          alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
-          <div style={{ width:28, height:28, borderRadius:"50%",
-            border:"2px solid rgba(255,255,255,0.15)",
-            borderTopColor:"rgba(255,255,255,0.85)",
-            animation:"spin 0.7s linear infinite" }} />
-        </div>
+      {/* Official platform embeds (X / TikTok / Instagram / Facebook) */}
+      {!userVideo && embedUrl && !embedFailed && (
+        <OfficialEmbedPlayer
+          embedUrl={embedUrl}
+          isActive={isActive}
+          onUnavailable={() => setEmbedFailed(true)}
+        />
       )}
 
-      {/* Subtle noise texture overlay */}
-      {!playbackSrc && play.platform !== "twitter" && (
-        <div style={{ position:"absolute", inset:0, opacity:0.03,
-          backgroundImage:"url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
-          backgroundSize:"120px" }} />
-      )}
-
-      {/* Pause indicator */}
-      {playbackSrc && paused && (
-        <div style={{ position:"absolute", inset:0, display:"flex",
-          alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
-          <div style={{ width:64, height:64, borderRadius:"50%",
-            background:"rgba(0,0,0,0.5)", backdropFilter:"blur(12px)",
-            border:"1px solid rgba(255,255,255,0.2)",
-            display:"flex", alignItems:"center", justifyContent:"center" }}>
-            <svg width="20" height="22" viewBox="0 0 20 22" fill="white" style={{ marginLeft:2 }}>
-              <path d="M2 2l16 9L2 20V2z"/>
-            </svg>
-          </div>
-        </div>
-      )}
-
-      {/* Link-only (Instagram, or X when no stream) — tap to open the source */}
+      {/* Unavailable / private / unsupported — open original */}
       {showOpenCard && (
         <div style={{ position:"absolute", inset:0, display:"flex",
           flexDirection:"column", gap:14,
           alignItems:"center", justifyContent:"center",
           opacity: isActive ? 1 : 0.3,
           transform: isActive ? "scale(1)" : "scale(0.9)",
-          transition:"all .4s cubic-bezier(0.34,1.1,0.64,1)" }}>
+          transition:"all .4s cubic-bezier(0.34,1.1,0.64,1)",
+          zIndex: 2 }}>
           <div style={{ width:64, height:64, borderRadius:"50%",
             background:"rgba(255,255,255,0.08)",
             border:"1px solid rgba(255,255,255,0.15)",
@@ -1318,8 +1208,10 @@ function FeedCard({ play, isActive, warm = false }:
             </svg>
           </div>
           <div style={{ fontSize:13, fontWeight:600, color:"rgba(255,255,255,0.9)",
-            letterSpacing:"-0.01em" }}>
-            {play.platform === "twitter" ? "Open on X" : "Open in Instagram"}
+            letterSpacing:"-0.01em", textAlign:"center", padding:"0 24px" }}>
+            {embedFailed
+              ? "This clip is private, deleted, or unavailable in-app."
+              : platformOpenLabel(play.platform)}
           </div>
         </div>
       )}
@@ -1394,7 +1286,7 @@ function FeedCard({ play, isActive, warm = false }:
           </div>
           <span style={{ fontSize:11, fontWeight:600, color:"rgba(255,255,255,0.7)",
             letterSpacing:"-0.01em" }}>
-            {play.platform === "twitter" ? "View on X" : "View on IG"}
+            {platformViewLabel(play.platform)}
           </span>
         </a>
       </div>
@@ -1403,9 +1295,9 @@ function FeedCard({ play, isActive, warm = false }:
       <div onClick={e => e.stopPropagation()}
         style={{ position:"absolute", bottom:0, left:0, right:0,
         background:"linear-gradient(transparent, rgba(0,0,0,0.75) 40%, rgba(0,0,0,0.95) 100%)",
-        padding:"60px 16px 96px" }}>
+        padding:"60px 16px 96px", zIndex: 3 }}>
 
-        {/* Source attribution — required by X/Instagram ToS */}
+        {/* Source attribution — required by platform ToS */}
         <a href={play.sourceUrl} target="_blank" rel="noopener noreferrer"
           style={{ display:"inline-flex", alignItems:"center", gap:5,
             marginBottom:8, textDecoration:"none" }}>
@@ -1416,7 +1308,7 @@ function FeedCard({ play, isActive, warm = false }:
           </span>
           <span style={{ fontSize:11, color:"rgba(255,255,255,0.45)",
             fontWeight:500, letterSpacing:"0.01em" }}>
-            {play.platform === "twitter" ? "View original on X" : "View original on Instagram"}
+            {platformOriginalLabel(play.platform)}
           </span>
         </a>
 
@@ -2296,9 +2188,11 @@ function ClipPage({ play, isActive, warm = false, paused, onTogglePause }: {
   play: FeedPlay; isActive: boolean; warm?: boolean;
   paused: boolean; onTogglePause: () => void;
 }) {
-  const videoRef  = useRef<HTMLVideoElement>(null);
-  const streamUrl = usePlaybackStream(play, isActive, warm);
-  const playbackSrc = play.videoStoragePath || streamUrl;
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [embedFailed, setEmbedFailed] = useState(false);
+  const owned = play.videoStoragePath;
+  const embedUrl = officialEmbedUrl(play);
+  const hasEmbed = Boolean(embedUrl) && !embedFailed;
 
   const cat    = CATEGORIES.find(c => c.id === play.categoryId);
   const parent = cat?.parentId ? CATEGORIES.find(c => c.id === cat.parentId) : null;
@@ -2306,37 +2200,34 @@ function ClipPage({ play, isActive, warm = false, paused, onTogglePause }: {
   return (
     <div style={{ position:"relative", width:"100%", height:"100%",
       background:"#000", overflow:"hidden" }}
-      onClick={() => { if (playbackSrc) onTogglePause(); }}>
+      onClick={() => { if (owned) onTogglePause(); }}>
 
       <PlayMediaBackdrop play={play} />
-      {playbackSrc && (
-        <NativeClipVideo src={playbackSrc} isActive={isActive}
+      {owned && (
+        <NativeClipVideo src={owned} isActive={isActive}
           paused={paused} videoRef={videoRef} warm={warm} />
       )}
-
-      {/* Resolving the stream */}
-      {isActive && !playbackSrc && play.platform === "twitter" && (
-        <div style={{ position:"absolute", inset:0, display:"flex",
-          alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
-          <div style={{ width:28, height:28, borderRadius:"50%",
-            border:"2px solid rgba(255,255,255,0.15)",
-            borderTopColor:"rgba(255,255,255,0.85)",
-            animation:"spin 0.7s linear infinite" }} />
-        </div>
+      {!owned && embedUrl && !embedFailed && (
+        <OfficialEmbedPlayer
+          embedUrl={embedUrl}
+          isActive={isActive}
+          onUnavailable={() => setEmbedFailed(true)}
+        />
       )}
-
-      {/* Pause indicator */}
-      {playbackSrc && paused && isActive && (
+      {isActive && !owned && !hasEmbed && (
         <div style={{ position:"absolute", inset:0, display:"flex",
-          alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
-          <div style={{ width:64, height:64, borderRadius:"50%",
-            background:"rgba(0,0,0,0.5)", backdropFilter:"blur(12px)",
-            border:"1px solid rgba(255,255,255,0.2)",
-            display:"flex", alignItems:"center", justifyContent:"center" }}>
-            <svg width="20" height="22" viewBox="0 0 20 22" fill="white" style={{ marginLeft:2 }}>
-              <path d="M2 2l16 9L2 20V2z"/>
-            </svg>
+          flexDirection:"column", gap:12, alignItems:"center", justifyContent:"center",
+          zIndex: 2, padding: 24 }}>
+          <div style={{ fontSize:14, fontWeight:600, color:"rgba(255,255,255,0.85)",
+            textAlign:"center" }}>
+            {embedFailed
+              ? "This clip is private, deleted, or unavailable in-app."
+              : platformOpenLabel(play.platform)}
           </div>
+          <a href={play.sourceUrl} target="_blank" rel="noopener noreferrer"
+            style={{ fontSize:13, fontWeight:600, color:C.accent, textDecoration:"none" }}>
+            {platformOpenLabel(play.platform)}
+          </a>
         </div>
       )}
 
@@ -2344,7 +2235,7 @@ function ClipPage({ play, isActive, warm = false, paused, onTogglePause }: {
       <div style={{ position:"absolute", bottom:0, left:0, right:0,
         background:"linear-gradient(transparent, rgba(0,0,0,0.85))",
         padding:"48px 16px calc(24px + var(--pb-safe-bottom, env(safe-area-inset-bottom)))",
-        pointerEvents:"none" }}>
+        pointerEvents:"none", zIndex: 3 }}>
         {(parent || cat) && (
           <div style={{ fontSize:11, fontWeight:500, color:"rgba(255,255,255,0.5)",
             letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:6 }}>
@@ -2972,9 +2863,7 @@ function ImportClipPreview({ url, platformLabel, shortUrl }:
     addedAt: new Date(),
     gradient: ["#1a2440", "#0d0d0f"] as string[],
   }), [url, platform]);
-  // Same resolve + play path as the feed so the clip actually plays here.
-  const src = usePlaybackStream(play as unknown as FeedPlay, true);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const embedUrl = officialEmbedUrl(play as unknown as FeedPlay);
 
   return (
     <div style={{ margin:"14px 20px 0" }}>
@@ -2982,12 +2871,12 @@ function ImportClipPreview({ url, platformLabel, shortUrl }:
         overflow:"hidden", background:"#000",
         border:`1px solid ${isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)"}` }}>
         <PlayMediaBackdrop play={play as unknown as FeedPlay} />
-        {src && (
-          <NativeClipVideo src={src} isActive={true} paused={false} videoRef={videoRef} />
+        {embedUrl && (
+          <OfficialEmbedPlayer embedUrl={embedUrl} isActive={true} />
         )}
         {/* Platform badge overlay */}
         <div style={{ position:"absolute", top:8, left:8, display:"flex", alignItems:"center",
-          gap:6, padding:"4px 9px", borderRadius:99,
+          gap:6, padding:"4px 9px", borderRadius:99, zIndex: 2,
           background:"rgba(0,0,0,0.55)", backdropFilter:"blur(6px)" }}>
           <div style={{ width:14, height:14, borderRadius:"50%", background:"#2fae6a",
             display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -3026,7 +2915,10 @@ function ImportLinkSheet({ onClose, onImported, initialUrl, mandatory }:
   // Sub-category is optional — a play with only a top-level pick files under it.
   const canSave    = parentId !== "";
   const platform   = detectPlatform(url.trim());
-  const platformLabel = platform === "twitter" ? "X / Twitter" : "Instagram";
+  const platformLabel = platform === "twitter" ? "X / Twitter"
+    : platform === "tiktok" ? "TikTok"
+    : platform === "facebook" ? "Facebook"
+    : "Instagram";
   const prettyUrl  = url.trim().replace(/^https?:\/\//i, "").replace(/\/$/, "");
   const shortUrl   = prettyUrl.length > 40 ? prettyUrl.slice(0, 40) + "…" : prettyUrl;
   const OK         = "#2fae6a";

@@ -1,58 +1,93 @@
 import Foundation
 
-/// Resolves a temporary stream URL for in-app playback. Does not download or store video.
+/// Builds official platform embed URLs for in-app WKWebView playback.
+/// Does not download, scrape CDN MP4s, or rehost third-party video.
 enum PlaybackResolver {
 
-    static func twitterStreamURL(sourceURL: String) async -> URL? {
-        guard let tweetId = extractTweetId(from: sourceURL) else { return nil }
+    /// Prefer a stored embed URL; otherwise derive one from the source link.
+    static func embedURL(for play: Play) -> URL? {
+        if let stored = play.embedUrl, let url = URL(string: stored) {
+            return url
+        }
+        return officialEmbedURL(from: play.sourceUrl)
+    }
 
-        let syndicationURL = URL(string:
-            "https://cdn.syndication.twimg.com/tweet-result?id=\(tweetId)&lang=en&token=0"
-        )!
-        var request = URLRequest(url: syndicationURL)
-        request.setValue("Playbook/1.0", forHTTPHeaderField: "User-Agent")
+    static func officialEmbedURL(from sourceURL: String) -> URL? {
+        if let tweetId = extractTweetId(from: sourceURL) {
+            return URL(string:
+                "https://platform.twitter.com/embed/Tweet.html?id=\(tweetId)&theme=dark&dnt=true"
+            )
+        }
 
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode),
-              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let mediaDetails = payload["mediaDetails"] as? [[String: Any]]
-        else { return nil }
+        if let tiktokId = extractTikTokVideoId(from: sourceURL) {
+            return URL(string: "https://www.tiktok.com/embed/v2/\(tiktokId)")
+        }
 
-        for media in mediaDetails {
-            let type = media["type"] as? String
-            guard type == "video" || type == "animated_gif" else { continue }
+        if let shortcode = extractInstagramShortcode(from: sourceURL) {
+            let isReel = sourceURL.range(of: #"instagram\.com/(?:reel|reels)/"#,
+                                         options: .regularExpression) != nil
+            let kind = isReel ? "reel" : "p"
+            return URL(string: "https://www.instagram.com/\(kind)/\(shortcode)/embed/captioned/")
+        }
 
-            guard let videoInfo = media["video_info"] as? [String: Any],
-                  let variants = videoInfo["variants"] as? [[String: Any]]
-            else { continue }
-
-            let mp4s = variants.compactMap { variant -> (url: URL, bitrate: Int)? in
-                guard let urlString = variant["url"] as? String,
-                      let url = URL(string: urlString)
-                else { return nil }
-                let contentType = variant["content_type"] as? String
-                guard contentType == nil || contentType == "video/mp4" else { return nil }
-                let bitrate = variant["bitrate"] as? Int ?? 0
-                return (url, bitrate)
-            }
-            .sorted { $0.bitrate > $1.bitrate }
-
-            if let best = mp4s.first?.url { return best }
+        if isFacebookURL(sourceURL) {
+            let encoded = sourceURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? sourceURL
+            return URL(string:
+                "https://www.facebook.com/plugins/video.php?href=\(encoded)&show_text=false&width=320&height=560&t=0"
+            )
         }
 
         return nil
     }
 
+    // MARK: - Parsers
+
     private static func extractTweetId(from urlString: String) -> String? {
-        let pattern = #"(?:twitter\.com|x\.com)/\w+/status/(\d+)"#
+        firstCapture(
+            in: urlString,
+            pattern: #"(?:twitter\.com|x\.com)/(?:\w+/)?status(?:es)?/(\d+)"#
+        )
+    }
+
+    private static func extractTikTokVideoId(from urlString: String) -> String? {
+        if let id = firstCapture(
+            in: urlString,
+            pattern: #"tiktok\.com/@[^/]+/video/(\d+)"#
+        ) {
+            return id
+        }
+        return firstCapture(
+            in: urlString,
+            pattern: #"tiktok\.com/embed(?:/v2)?/(\d+)"#
+        )
+    }
+
+    private static func extractInstagramShortcode(from urlString: String) -> String? {
+        firstCapture(
+            in: urlString,
+            pattern: #"instagram\.com/(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)"#
+        )
+    }
+
+    private static func isFacebookURL(_ urlString: String) -> Bool {
+        guard let host = URL(string: urlString)?.host?.lowercased() else { return false }
+        let bare = host.replacingOccurrences(of: "www.", with: "")
+        return bare == "facebook.com"
+            || bare.hasSuffix(".facebook.com")
+            || bare == "fb.watch"
+            || bare == "fb.com"
+            || bare == "m.facebook.com"
+    }
+
+    private static func firstCapture(in string: String, pattern: String) -> String? {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
             return nil
         }
-        let range = NSRange(urlString.startIndex..., in: urlString)
-        guard let match = regex.firstMatch(in: urlString, range: range),
-              let idRange = Range(match.range(at: 1), in: urlString)
+        let range = NSRange(string.startIndex..., in: string)
+        guard let match = regex.firstMatch(in: string, range: range),
+              match.numberOfRanges > 1,
+              let idRange = Range(match.range(at: 1), in: string)
         else { return nil }
-        return String(urlString[idRange])
+        return String(string[idRange])
     }
 }

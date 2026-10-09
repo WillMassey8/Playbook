@@ -42,9 +42,13 @@ struct CategorizeShareView: View {
     }
 
     private var platformLabel: String {
-        let host = sharedURL.host ?? ""
+        let host = (sharedURL.host ?? "").lowercased()
         if host.contains("twitter") || host.contains("x.com") { return "Twitter / X" }
-        if host.contains("instagram")                          { return "Instagram" }
+        if host.contains("tiktok")                            { return "TikTok" }
+        if host.contains("instagram")                         { return "Instagram" }
+        if host.contains("facebook") || host.contains("fb.watch") || host == "fb.com" {
+            return "Facebook"
+        }
         return sharedURL.host ?? "Link"
     }
 
