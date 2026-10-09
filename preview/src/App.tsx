@@ -977,7 +977,7 @@ function ClipShareSheet({ play, onClose }: { play: typeof FEED[0]; onClose: () =
           <path d="M6 3h8a2 2 0 012 2v10l-4-3-4 3V5a2 2 0 012-2z" stroke={isDark ? "rgba(255,255,255,0.5)" : STEEP.graphite} strokeWidth="1.5" strokeLinejoin="round"/>
         </svg>
       ),
-      label: play.platform === "twitter" ? "Open in X" : "Open in Instagram",
+      label: platformOpenLabel(play.platform),
       action: () => { window.open(play.sourceUrl, "_blank"); onClose(); },
     },
     {
@@ -1989,7 +1989,10 @@ function SimilarPlaysCard({ inCategoryId, navigate }:
                   </div>
                   <div style={{ fontSize:11, color: T.textFaint,
                     letterSpacing:"-0.005em", marginTop:2 }}>
-                    {play.platform === "twitter" ? "X / Twitter" : "Instagram"}
+                    {play.platform === "twitter" ? "X / Twitter"
+                      : play.platform === "tiktok" ? "TikTok"
+                      : play.platform === "facebook" ? "Facebook"
+                      : "Instagram"}
                     <span style={{ margin:"0 5px", opacity:0.5 }}>·</span>
                     {play.views?.toLocaleString() || "0"} views
                   </div>
