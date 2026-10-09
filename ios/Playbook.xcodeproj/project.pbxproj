@@ -255,7 +255,7 @@
 			DEBUG_INFORMATION_FORMAT = dwarf;
 			ENABLE_TESTABILITY = YES;
 			GCC_OPTIMIZATION_LEVEL = 0;
-			IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+			IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 			ONLY_ACTIVE_ARCH = YES;
 			SDKROOT = iphoneos;
 			SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -266,7 +266,7 @@
 			COPY_PHASE_STRIP = NO;
 			DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 			ENABLE_NS_ASSERTIONS = NO;
-			IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+			IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 			SDKROOT = iphoneos;
 			SWIFT_COMPILATION_MODE = wholemodule;
 			VALIDATE_PRODUCT = YES;
@@ -278,7 +278,7 @@
 			GENERATE_INFOPLIST_FILE = NO;
 			INFOPLIST_FILE = Playbook/Info.plist;
 			INFOPLIST_KEY_CFBundleDisplayName = "Playbook AI";
-			IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+			IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 			LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 			MARKETING_VERSION = 1.0;
 			PRODUCT_BUNDLE_IDENTIFIER = com.playbook.app;
@@ -296,7 +296,7 @@
 			GENERATE_INFOPLIST_FILE = NO;
 			INFOPLIST_FILE = Playbook/Info.plist;
 			INFOPLIST_KEY_CFBundleDisplayName = "Playbook AI";
-			IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+			IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 			LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 			MARKETING_VERSION = 1.0;
 			PRODUCT_BUNDLE_IDENTIFIER = com.playbook.app;
@@ -311,7 +311,7 @@
 			DEVELOPMENT_TEAM = YOUR_TEAM_ID;
 			GENERATE_INFOPLIST_FILE = NO;
 			INFOPLIST_FILE = PlaybookShareExtension/Info.plist;
-			IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+			IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 			LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 			MARKETING_VERSION = 1.0;
 			PRODUCT_BUNDLE_IDENTIFIER = com.playbook.app.share;
@@ -328,7 +328,7 @@
 			DEVELOPMENT_TEAM = YOUR_TEAM_ID;
 			GENERATE_INFOPLIST_FILE = NO;
 			INFOPLIST_FILE = PlaybookShareExtension/Info.plist;
-			IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+			IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 			LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 			MARKETING_VERSION = 1.0;
 			PRODUCT_BUNDLE_IDENTIFIER = com.playbook.app.share;

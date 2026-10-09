@@ -52,6 +52,46 @@ enum Radius {
     static let pill: CGFloat = 999
 }
 
+// MARK: - Concentric shapes (iOS 26+)
+
+/// Canonical `ConcentricRectangle` presets for Playbook.
+/// Prefer these over hard-coded `RoundedRectangle` so surfaces match device /
+/// parent curvature (and stay rounded via `minimum:` when inset).
+enum PBCorners {
+    /// Cards, rows, text fields, list groups.
+    static func card(minimum: CGFloat = Radius.md) -> ConcentricRectangle {
+        ConcentricRectangle(corners: .concentric(minimum: minimum), isUniform: true)
+    }
+
+    /// Compact controls (chips, segmented tabs, small callouts).
+    static func compact(minimum: CGFloat = Radius.sm) -> ConcentricRectangle {
+        ConcentricRectangle(corners: .concentric(minimum: minimum), isUniform: true)
+    }
+
+    /// Large plan / hero cards.
+    static func hero(minimum: CGFloat = Radius.lg) -> ConcentricRectangle {
+        ConcentricRectangle(corners: .concentric(minimum: minimum), isUniform: true)
+    }
+
+    /// Sheets & share panels: fixed top radius, concentric bottom (Notes-style).
+    static func sheet(top: CGFloat = Radius.xl, bottomMinimum: CGFloat = Radius.lg) -> ConcentricRectangle {
+        ConcentricRectangle(
+            uniformTopCorners: .fixed(top),
+            uniformBottomCorners: .concentric(minimum: bottomMinimum)
+        )
+    }
+
+    /// Full-bleed surfaces that hug the display / parent container.
+    static var display: ConcentricRectangle {
+        ConcentricRectangle()
+    }
+
+    /// Tiny chrome (accent bars, checkboxes) — fixed, not concentric.
+    static func fixed(_ radius: CGFloat) -> ConcentricRectangle {
+        ConcentricRectangle(corners: .fixed(radius), isUniform: true)
+    }
+}
+
 // MARK: - Category accent colors
 
 extension Category {
@@ -74,8 +114,8 @@ extension Category {
 struct CardStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .background(Color.pbCard)
-            .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+            .background(Color.pbCard, in: PBCorners.card())
+            .containerShape(PBCorners.card())
     }
 }
 
@@ -84,10 +124,33 @@ extension View {
         modifier(CardStyle())
     }
 
+    /// Clip to a concentric card shape (nested-safe with minimum radius).
+    func pbClipCard(minimum: CGFloat = Radius.md) -> some View {
+        clipShape(PBCorners.card(minimum: minimum))
+    }
+
+    /// Fill behind content using a concentric card shape.
+    func pbCardBackground(_ color: Color = .pbCard, minimum: CGFloat = Radius.md) -> some View {
+        background(color, in: PBCorners.card(minimum: minimum))
+            .containerShape(PBCorners.card(minimum: minimum))
+    }
+
+    func pbCompactBackground(_ color: Color, minimum: CGFloat = Radius.sm) -> some View {
+        background(color, in: PBCorners.compact(minimum: minimum))
+    }
+
+    func pbStrokeCard(
+        _ color: Color,
+        lineWidth: CGFloat = 1.5,
+        minimum: CGFloat = Radius.md
+    ) -> some View {
+        overlay(PBCorners.card(minimum: minimum).stroke(color, lineWidth: lineWidth))
+    }
+
     func shimmer(active: Bool = true) -> some View {
         self.overlay(
             active
-                ? ShimmerView().clipShape(RoundedRectangle(cornerRadius: Radius.md))
+                ? ShimmerView().clipShape(PBCorners.card())
                 : nil
         )
     }
@@ -230,8 +293,10 @@ struct PBButtonStyle: ButtonStyle {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 52)
-        .background(Color.pbGreen.opacity(configuration.isPressed ? 0.8 : 1))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+        .background(
+            Color.pbGreen.opacity(configuration.isPressed ? 0.8 : 1),
+            in: PBCorners.card()
+        )
         .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
@@ -243,8 +308,7 @@ struct SecondaryButtonStyle: ButtonStyle {
             .foregroundStyle(Color.pbGreen)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
-            .background(Color.pbGreen.opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+            .background(Color.pbGreen.opacity(0.12), in: PBCorners.card())
             .opacity(configuration.isPressed ? 0.7 : 1)
     }
 }

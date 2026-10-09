@@ -40,7 +40,7 @@ Twitter/Instagram  →  iOS Share Extension  →  App Group (pending URL)
 
 ## Prerequisites
 
-- **macOS + Xcode 15+** (iOS development cannot run on Windows)
+- **macOS + Xcode 26+** (targets iOS 26 for `ConcentricRectangle`; iOS development cannot run on Windows)
 - **Supabase Pro** project (or any plan with Edge Functions + Storage)
 - Optional: [XcodeGen](https://github.com/yonaskolb/XcodeGen) to generate `.xcodeproj` from `project.yml`
 

@@ -69,6 +69,7 @@ struct AuthLandingView: View {
                 .padding(.bottom, Spacing.xxl)
             }
         }
+        .containerShape(PBCorners.display)
         .preferredColorScheme(.dark)
     }
 }

@@ -26,7 +26,9 @@ struct AddClipView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.pbBg.ignoresSafeArea()
+                PBCorners.sheet()
+                    .fill(Color.pbBg)
+                    .ignoresSafeArea()
                 ScrollView {
                     VStack(spacing: Spacing.lg) {
                         urlField
@@ -90,8 +92,7 @@ struct AddClipView: View {
                 }
             }
             .padding()
-            .background(Color.pbCard)
-            .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+            .pbCardBackground()
 
             // Platform hint
             if let hint = platformHint {
@@ -124,8 +125,7 @@ struct AddClipView: View {
                 }
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.pbCard)
-                .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+                .pbCardBackground()
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: Spacing.sm) {
@@ -160,10 +160,9 @@ struct AddClipView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(selected ? Color.pbGreen : Color.pbCard)
-            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+            .background(selected ? Color.pbGreen : Color.pbCard, in: PBCorners.compact())
             .overlay(
-                RoundedRectangle(cornerRadius: Radius.sm)
+                PBCorners.compact()
                     .stroke(selected ? Color.clear : Color.white.opacity(0.08), lineWidth: 1)
             )
         }
@@ -194,8 +193,7 @@ struct AddClipView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(Spacing.lg)
-            .background(Color.pbGreen.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+            .pbCardBackground(Color.pbGreen.opacity(0.08))
             .transition(.scale.combined(with: .opacity))
 
         case .failure(let message):
@@ -209,8 +207,7 @@ struct AddClipView: View {
                 }
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.orange.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+                .pbCardBackground(Color.orange.opacity(0.1))
 
                 Button("Try Again") {
                     withAnimation { vm.state = .idle }

@@ -374,12 +374,13 @@ struct OnboardingFlowView: View {
                 }
             }
             .padding(Spacing.md)
-            .background(selected ? Color.pbGreen.opacity(0.12) : Color.pbCard)
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.md)
-                    .stroke(selected ? Color.pbGreen.opacity(0.6) : Color.white.opacity(0.08), lineWidth: 1.5)
+            .background(
+                selected ? Color.pbGreen.opacity(0.12) : Color.pbCard,
+                in: PBCorners.card()
             )
-            .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+            .pbStrokeCard(
+                selected ? Color.pbGreen.opacity(0.6) : Color.white.opacity(0.08)
+            )
         }
         .buttonStyle(.plain)
     }
@@ -393,11 +394,11 @@ struct OnboardingFlowView: View {
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 ZStack {
-                    RoundedRectangle(cornerRadius: 6)
+                    PBCorners.fixed(6)
                         .stroke(selected ? Color.pbGreen : Color.white.opacity(0.25), lineWidth: 1.5)
                         .frame(width: 22, height: 22)
                     if selected {
-                        RoundedRectangle(cornerRadius: 6)
+                        PBCorners.fixed(6)
                             .fill(Color.pbGreen)
                             .frame(width: 22, height: 22)
                         Image(systemName: "checkmark")
@@ -408,12 +409,13 @@ struct OnboardingFlowView: View {
                 .padding(.top, 2)
             }
             .padding(Spacing.md)
-            .background(selected ? Color.pbGreen.opacity(0.12) : Color.pbCard)
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.md)
-                    .stroke(selected ? Color.pbGreen.opacity(0.6) : Color.white.opacity(0.08), lineWidth: 1.5)
+            .background(
+                selected ? Color.pbGreen.opacity(0.12) : Color.pbCard,
+                in: PBCorners.card()
             )
-            .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+            .pbStrokeCard(
+                selected ? Color.pbGreen.opacity(0.6) : Color.white.opacity(0.08)
+            )
         }
         .buttonStyle(.plain)
     }
@@ -451,12 +453,17 @@ struct OnboardingFlowView: View {
             }
             .padding(Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(answers.plan == tier ? Color.pbGreen.opacity(0.12) : Color.pbCard)
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.lg)
-                    .stroke(answers.plan == tier ? Color.pbGreen.opacity(0.6) : Color.white.opacity(0.08), lineWidth: 1.5)
+            .background(
+                answers.plan == tier ? Color.pbGreen.opacity(0.12) : Color.pbCard,
+                in: PBCorners.hero()
             )
-            .clipShape(RoundedRectangle(cornerRadius: Radius.lg))
+            .overlay(
+                PBCorners.hero()
+                    .stroke(
+                        answers.plan == tier ? Color.pbGreen.opacity(0.6) : Color.white.opacity(0.08),
+                        lineWidth: 1.5
+                    )
+            )
         }
         .buttonStyle(.plain)
     }

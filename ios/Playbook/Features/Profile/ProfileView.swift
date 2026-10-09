@@ -26,6 +26,7 @@ struct ProfileView: View {
             .navigationBarHidden(true)
             .sheet(isPresented: $showHowToShare) {
                 HowToShareView()
+                    .containerShape(PBCorners.sheet())
             }
         }
     }
@@ -126,8 +127,7 @@ struct ProfileView: View {
                         }
                         .font(.pbHeadline)
                         .padding()
-                        .background(Color.pbCard)
-                        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+                        .pbCardBackground()
                     }
                     .buttonStyle(.plain)
 
@@ -257,8 +257,7 @@ struct ProfileView: View {
             VStack(spacing: 0) {
                 content()
             }
-            .background(Color.pbCard)
-            .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+            .pbCardBackground()
         }
     }
 
@@ -276,8 +275,7 @@ struct ProfileView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 30, height: 30)
-                    .background(color.opacity(0.25))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .background(color.opacity(0.25), in: PBCorners.fixed(8))
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
