@@ -4501,7 +4501,7 @@ type OnboardingPain =
   | "like_nosave" | "save_noutilize" | "screenshots_chat" | "install_gap"
   | "save_forget" | "cant_find" | "group_chat_lost" | "scroll_again";
 type OnboardingVolume = "light" | "medium" | "heavy" | "constant";
-type OnboardingPlan = "annual" | "monthly" | "free" | "team5" | "team10";
+type OnboardingPlan = "annual" | "weekly" | "free" | "team5" | "team10";
 
 type OnboardingAnswers = {
   userType: OnboardingUserType | null;
@@ -5651,20 +5651,20 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                     selected={answers.plan === "annual"}
                     onClick={() => setAnswers(a => ({ ...a, plan:"annual" }))}
                     name="Annual"
-                    price="$2.50/mo"
-                    sublabel="$29.99/year · unlimited playbook saves"
+                    price="$1.15/wk"
+                    sublabel="$59.99/year · unlimited playbook saves"
                     badge="Best value"
                     badgeBg={STEEP.rust}
-                    savings="Save 75%"
+                    savings="Save 81%"
                   />
 
-                  {/* Monthly */}
+                  {/* Weekly */}
                   <PaywallPlanCard
-                    selected={answers.plan === "monthly"}
-                    onClick={() => setAnswers(a => ({ ...a, plan:"monthly" }))}
-                    name="Monthly"
-                    price="$9.99/mo"
-                    sublabel="Unlimited playbook saves"
+                    selected={answers.plan === "weekly"}
+                    onClick={() => setAnswers(a => ({ ...a, plan:"weekly" }))}
+                    name="Weekly"
+                    price="$5.99/wk"
+                    sublabel="Unlimited playbook saves · billed weekly"
                   />
 
                   {/* Free — buried; exit triggers reverse trial */}
