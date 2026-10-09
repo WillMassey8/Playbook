@@ -44,6 +44,10 @@ targets:
           - twitter
           - x
           - instagram
+          - tiktok
+          - snssdk1233
+          - fb
+          - facebook
         SUPABASE_URL: https://riwjijzjqfdsfocnzria.supabase.co
         SUPABASE_ANON_KEY: sb_publishable_dDyrNmILRObvGMTsDTLb2g_uj94nVXj
 

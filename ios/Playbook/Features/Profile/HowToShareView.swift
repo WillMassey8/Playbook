@@ -4,7 +4,7 @@ struct HowToShareView: View {
     @Environment(\.dismiss) private var dismiss
 
     private let steps: [(icon: String, title: String, detail: String)] = [
-        ("1.circle.fill", "Find a clip on X or Instagram", "Open any post with a play you want to save."),
+        ("1.circle.fill", "Find a clip on X, TikTok, Instagram, or Facebook", "Open any post with a play you want to save."),
         ("2.circle.fill", "Tap Share", "Use the share button on the post."),
         ("3.circle.fill", "Choose Playbook AI", "Select Playbook from the share sheet."),
         ("4.circle.fill", "Pick a category", "Tag the clip so you can find it later in your Playbook."),
@@ -18,7 +18,7 @@ struct HowToShareView: View {
                         .font(.pbTitle)
                         .foregroundStyle(.white)
 
-                    Text("Share from X or Instagram straight into your playbook — no more lost group chat clips.")
+                    Text("Share from X, TikTok, Instagram, or Facebook straight into your playbook — no more lost group chat clips.")
                         .font(.pbCallout)
                         .foregroundStyle(.white.opacity(0.55))
 

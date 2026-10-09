@@ -224,8 +224,18 @@ struct AddClipView: View {
 
     private var platformHint: String? {
         let text = vm.urlText.lowercased()
-        if text.contains("twitter.com") || text.contains("x.com") { return "Twitter/X clip detected" }
-        if text.contains("instagram.com") { return "Instagram clip detected (link saved)" }
+        if text.contains("twitter.com") || text.contains("x.com") {
+            return "X / Twitter clip — plays via official embed"
+        }
+        if text.contains("tiktok.com") || text.contains("vm.tiktok") {
+            return "TikTok clip — plays via official embed"
+        }
+        if text.contains("instagram.com") {
+            return "Instagram clip — plays via official embed"
+        }
+        if text.contains("facebook.com") || text.contains("fb.watch") || text.contains("fb.com") {
+            return "Facebook clip — plays via official embed"
+        }
         return nil
     }
 

@@ -2,10 +2,9 @@ import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
 /**
- * Dev-only passthrough for X video files. The CDN's CORS and referrer rules
- * vary per request, which makes `<video src>` playback flaky, so the stream is
- * relayed through this origin instead. Range headers are forwarded so seeking
- * keeps working; nothing is written to disk.
+ * Dev-only passthrough so the browser can muted-autoplay X CDN clips.
+ * iOS AVPlayer talks to video.twimg.com directly; browsers need this relay.
+ * Bytes are not written to disk.
  */
 function twitterVideoProxy(): Plugin {
   return {
@@ -52,17 +51,14 @@ function twitterVideoProxy(): Plugin {
   }
 }
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), twitterVideoProxy()],
   server: {
     host: true,
     port: 5174,
     strictPort: true,
-    // Allow public tunnels (localhost.run / cloudflare / localtunnel)
     allowedHosts: true,
     proxy: {
-      // Dev-only: resolve X syndication without CORS (playback URL only — not stored)
       '/tw-syndication': {
         target: 'https://cdn.syndication.twimg.com',
         changeOrigin: true,
