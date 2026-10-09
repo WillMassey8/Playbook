@@ -4709,6 +4709,76 @@ function estimateMonthlyClips(v: OnboardingVolume | null): number {
   }
 }
 
+/** Turn raw answers into a short profile that sounds like we know this coach. */
+function personalCommitCard(answers: OnboardingAnswers): {
+  title: string;
+  body: string;
+  lines: string[];
+} {
+  const monthly = estimateMonthlyClips(answers.volume);
+  const yearly = monthly * 12;
+  const book = answers.userType === "fan" ? fanPlaybook() : coachPlaybook(answers);
+  const folders = book.folders.map(f => f.name).slice(0, 3);
+
+  if (answers.userType === "fan") {
+    const habit =
+      answers.pain === "cant_find" ? "and then cannot find them when it matters"
+      : answers.pain === "group_chat_lost" ? "and they disappear into group chats"
+      : answers.pain === "scroll_again" ? "and end up hunting for them on X again"
+      : "and rarely go back to them";
+    return {
+      title: "Built for how you watch football.",
+      body: `You save clips ${habit}. At your pace, that is about ${yearly.toLocaleString()} plays a year that should live in one place—not your camera roll.`,
+      lines: [
+        `Your folders: ${folders.join(", ")}.`,
+        "Share from X or Instagram, and it lands here.",
+        "Find any clip without scrolling for it again.",
+      ],
+    };
+  }
+
+  const level = answers.level ? LEVEL_LABEL[answers.level].toLowerCase() : "football";
+  const roleShort: Record<OnboardingRole, string> = {
+    head: "head coach",
+    oc: "offensive coordinator",
+    dc: "defensive coordinator",
+    position: "position coach",
+    analyst: "analyst",
+  };
+  const role = answers.role ? roleShort[answers.role] : "coach";
+
+  const why =
+    answers.focus === "install" ? "you want to install them"
+    : answers.focus === "show_guys" ? "you want to show them to your players"
+    : "they look good and you might run them later";
+
+  const stuck =
+    answers.pain === "like_nosave" ? "Most of the time, the like is as far as it goes."
+    : answers.pain === "save_noutilize" ? "When you do save them, they rarely get opened again."
+    : answers.pain === "screenshots_chat" ? "Right now they die in screenshots and group chats."
+    : answers.pain === "install_gap" ? "You mean to put them in install, and then the week gets away from you."
+    : "They do not end up in a real playbook.";
+
+  const staffLine =
+    answers.staff === "staff" || answers.staff === "large"
+      ? "Your staff should be looking at the same book you are."
+      : "This can stay your personal book until you need to share it.";
+
+  return {
+    title: `A ${level} ${role}.`,
+    body: `You save plays because ${why}. ${stuck} At your pace, that is roughly ${yearly.toLocaleString()} plays a year that belong in ${folders[0] ? folders.join(", ") : "your playbook"}—not lost on your phone.`,
+    lines: [
+      folders.length ? `We set up ${folders.join(", ")} for you.` : "We set up folders around how you coach.",
+      answers.focus === "install"
+        ? "Share a play from X or Instagram, and drop it straight into install."
+        : answers.focus === "show_guys"
+        ? "Share a play, then send a clean clip to your room."
+        : "Share a play from X or Instagram, and keep it until you are ready to run it.",
+      staffLine,
+    ],
+  };
+}
+
 function MaterialIcon({ name, filled = false }: { name: string; filled?: boolean }) {
   return (
     <span
@@ -5487,38 +5557,32 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
           </OnboardingStepShell>
         )}
 
-        {step === "commit" && (
-          <OnboardingStepShell
-            title="Ready to set this up?"
-            subtitle="We will use what you just told us.">
-            <div style={{
-              background: STEEP.white,
-              border:`1.5px solid rgba(167,170,175,0.3)`,
-              borderRadius:18, padding:"18px 18px 14px",
-            }}>
-              <div style={{ fontSize:12, color:STEEP.rust, fontWeight:600,
-                letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:10 }}>
-                Your setup
+        {step === "commit" && (() => {
+          const profile = personalCommitCard(answers);
+          return (
+            <OnboardingStepShell
+              title={profile.title}
+              subtitle="Here is what we heard.">
+              <div style={{
+                background: STEEP.white,
+                border:`1.5px solid rgba(167,170,175,0.3)`,
+                borderRadius:18, padding:"18px 18px 14px",
+              }}>
+                <p style={{
+                  fontSize:15, color:STEEP.ink, lineHeight:1.55,
+                  letterSpacing:"-0.009em", margin:"0 0 16px",
+                }}>
+                  {profile.body}
+                </p>
+                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                  {profile.lines.map(line => (
+                    <PreviewLine key={line} text={line} />
+                  ))}
+                </div>
               </div>
-              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                <PreviewLine text={
-                  answers.userType === "coach"
-                    ? coachPlaybook(answers).identityLine
-                    : "Football fan"
-                } />
-                {answers.focus && (
-                  <PreviewLine text={
-                    COACH_FOCUSES.find(f => f.id === answers.focus)?.label ?? ""
-                  } />
-                )}
-                {answers.pain && <PreviewLine text={painPreviewLine(answers.pain)} />}
-                {answers.volume && (
-                  <PreviewLine text={`About ${estimateMonthlyClips(answers.volume)} plays a month.`} />
-                )}
-              </div>
-            </div>
-          </OnboardingStepShell>
-        )}
+            </OnboardingStepShell>
+          );
+        })()}
 
         {step === "building" && (
           <BuildingPlaybookStep
