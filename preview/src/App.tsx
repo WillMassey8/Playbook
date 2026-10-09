@@ -4490,18 +4490,15 @@ function GlowButton({ label, onPress, accent = false, disabled = false }:
 }
 
 // ─── ONBOARDING ───────────────────────────────────────────────────────────────
-// Reverse-engineered from high-converting quiz → paywall funnels (Noom / Cal AI /
-// Duolingo): identity → mid-funnel value proof → commitment → annual default →
-// reverse-trial save. Coach pains = doom-scroll → like → lost, NOT re-search.
+// Quiz → show them their playbook → paywall. Keep copy plain. Grown men.
 type OnboardingUserType = "coach" | "fan";
 type OnboardingLevel = "hs" | "college" | "youth" | "pro";
 type OnboardingRole = "head" | "oc" | "dc" | "position" | "analyst";
-type OnboardingFocus = "install" | "scout" | "scheme" | "teach";
+// Why they save: cool plays they want to run / install — not opponent scout.
+type OnboardingFocus = "install" | "later" | "show_guys";
 type OnboardingStaff = "solo" | "staff" | "large";
 type OnboardingPain =
-  // Coach — capture / system failure (not "I can't find that one play")
   | "like_nosave" | "save_noutilize" | "screenshots_chat" | "install_gap"
-  // Fan — discovery / retrieval
   | "save_forget" | "cant_find" | "group_chat_lost" | "scroll_again";
 type OnboardingVolume = "light" | "medium" | "heavy" | "constant";
 type OnboardingPlan = "annual" | "monthly" | "free" | "team5" | "team10";
@@ -4522,8 +4519,6 @@ type OnboardingStepId =
   | "pain" | "volume" | "commit"
   | "building" | "preview" | "paywall";
 
-// Coach: identity → value proof → friction → commit → theater → paywall
-// Fan:   who → value → pain → volume → commit → theater → paywall
 function onboardingSteps(userType: OnboardingUserType | null): OnboardingStepId[] {
   if (userType === "coach") {
     return [
@@ -4537,19 +4532,18 @@ function onboardingSteps(userType: OnboardingUserType | null): OnboardingStepId[
   return ["who"];
 }
 
-const COACH_ROLES: { id: OnboardingRole; label: string; hint: string }[] = [
-  { id: "head",     label: "Head coach",              hint: "Own the whole book" },
-  { id: "oc",       label: "Offensive coordinator",   hint: "Install + scheme" },
-  { id: "dc",       label: "Defensive coordinator",   hint: "Fronts, covers, pressure" },
-  { id: "position", label: "Position coach",          hint: "Your room's tape" },
-  { id: "analyst",  label: "Analyst / quality control", hint: "Scout + cutups" },
+const COACH_ROLES: { id: OnboardingRole; label: string }[] = [
+  { id: "head",     label: "Head coach" },
+  { id: "oc",       label: "Offensive coordinator" },
+  { id: "dc",       label: "Defensive coordinator" },
+  { id: "position", label: "Position coach" },
+  { id: "analyst",  label: "Analyst" },
 ];
 
 const COACH_FOCUSES: { id: OnboardingFocus; label: string }[] = [
-  { id: "install", label: "Installing our own concepts" },
-  { id: "scout",   label: "Scouting opponents" },
-  { id: "scheme",  label: "Collecting scheme / trend ideas" },
-  { id: "teach",   label: "Teaching players (or parents)" },
+  { id: "install",   label: "I want to install it" },
+  { id: "later",     label: "It looked good — might run it later" },
+  { id: "show_guys", label: "I want to show my guys" },
 ];
 
 const LEVEL_LABEL: Record<OnboardingLevel, string> = {
@@ -4571,7 +4565,6 @@ type PlaybookBlueprint = {
   shareLine: string;
 };
 
-/** Build a personalized mini-playbook from coach identity — shown mid-funnel as value proof. */
 function coachPlaybook(answers: OnboardingAnswers): PlaybookBlueprint {
   const level = answers.level ? LEVEL_LABEL[answers.level] : "Football";
   const role = answers.role ? ROLE_LABEL[answers.role] : "Coach";
@@ -4579,29 +4572,29 @@ function coachPlaybook(answers: OnboardingAnswers): PlaybookBlueprint {
 
   const byRole: Record<OnboardingRole, { name: string; subs: string[] }[]> = {
     head: [
-      { name: "Offense",  subs: ["Pass game", "Run game", "Red zone"] },
+      { name: "Offense",  subs: ["Pass", "Run", "Red zone"] },
       { name: "Defense",  subs: ["Fronts", "Coverage", "Pressure"] },
       { name: "Specials", subs: ["Returns", "Protection"] },
     ],
     oc: [
-      { name: "Pass concepts", subs: ["RPO", "Dropback", "Screens"] },
-      { name: "Run game",      subs: ["Inside zone", "Gap", "Toss"] },
-      { name: "Situational",   subs: ["3rd down", "Red zone", "2-minute"] },
+      { name: "Pass",        subs: ["RPO", "Dropback", "Screens"] },
+      { name: "Run",         subs: ["Inside zone", "Gap", "Toss"] },
+      { name: "Situational", subs: ["3rd down", "Red zone", "2-minute"] },
     ],
     dc: [
-      { name: "Fronts",    subs: ["Odd", "Even", "Okie"] },
-      { name: "Coverage",  subs: ["Man", "Zone", "Match"] },
-      { name: "Pressure",  subs: ["Sim pressures", "Blitz", "Games"] },
+      { name: "Fronts",   subs: ["Odd", "Even", "Okie"] },
+      { name: "Coverage", subs: ["Man", "Zone", "Match"] },
+      { name: "Pressure", subs: ["Sim", "Blitz", "Games"] },
     ],
     position: [
-      { name: "My room",   subs: ["Technique", "Drills", "Teach tape"] },
-      { name: "Concepts",  subs: ["Must-haves", "Install week"] },
-      { name: "Opponents", subs: ["Tendencies", "Personnel"] },
+      { name: "My room",  subs: ["Technique", "Drills", "Examples"] },
+      { name: "Install",  subs: ["This week", "Must-haves"] },
+      { name: "Ideas",    subs: ["Liked", "Might run"] },
     ],
     analyst: [
-      { name: "Scout",     subs: ["Formations", "Tendencies", "Personnel"] },
-      { name: "Cutups",    subs: ["Self scout", "Opponent", "Situational"] },
-      { name: "Trends",    subs: ["College", "NFL", "High school"] },
+      { name: "Ideas",   subs: ["Offense", "Defense", "Situational"] },
+      { name: "Install", subs: ["This week", "Hold for later"] },
+      { name: "Cutups",  subs: ["Self", "Concepts"] },
     ],
   };
 
@@ -4610,47 +4603,36 @@ function coachPlaybook(answers: OnboardingAnswers): PlaybookBlueprint {
     subs: [...f.subs],
   }));
 
-  // Nudge top folder names toward their focus
-  if (answers.focus === "scout" && folders[0] && !folders[0].name.toLowerCase().includes("scout")) {
-    folders[0] = { ...folders[0], name: `${folders[0].name} · Scout` };
-  }
-
   const valueByFocus: Record<OnboardingFocus, string[]> = {
     install: [
-      "Save a concept from X → it lands in Install, not your camera roll",
-      "Build weekly install folders your staff can actually open",
-      "Pull last week's teach tape in seconds before practice",
+      "Save it once. It goes in Install — not your camera roll.",
+      "Pull it up before practice without digging through chats.",
+      "Your staff can open the same folder you just filled.",
     ],
-    scout: [
-      "Drop opponent clips into Scout instead of a dead group chat",
-      "Tag formation + tendency so cutups build themselves",
-      "Share one scout book with the whole staff",
+    later: [
+      "Keep the plays you like without losing them in screenshots.",
+      "Come back when you're ready to put one in the book.",
+      "Organized by concept, not by which app you saw it in.",
     ],
-    scheme: [
-      "Keep scheme inspiration organized by concept, not by app",
-      "Turn doom-scroll likes into a living idea library",
-      "Find that RPO you liked in August — without re-scrolling",
-    ],
-    teach: [
-      "Send players (or parents) one clean clip, not a chat dump",
-      "Keep teach tape labeled by drill and week",
-      "Reuse last season's examples without digging through photos",
+    show_guys: [
+      "Send one clean clip instead of a chat dump.",
+      "Label it so your room knows what they're looking at.",
+      "Reuse good examples next season without hunting your photos.",
     ],
   };
 
   const valueLines = answers.focus
     ? valueByFocus[answers.focus]
     : [
-        "Share from X or Instagram — one tap into your book",
-        "Categories that match how you coach",
-        "Your staff sees the same playbook — not three chats",
+        "Share from X or Instagram. It lands in your book.",
+        "Folders that match how you coach.",
+        "Same playbook for you and your staff.",
       ];
 
-  const shareLine = answers.focus === "scout"
-    ? "Share an opponent clip from X → categorize → staff sees it"
-    : answers.focus === "install"
-    ? "Share a concept from Instagram → drops into this week's install"
-    : "Share from X or Instagram → categorized in your playbook";
+  const shareLine =
+    answers.focus === "install" ? "Share a play from X or IG. Drop it into this week's install."
+    : answers.focus === "show_guys" ? "Share a play. Send it to your guys from here."
+    : "Share a play from X or Instagram. It lands in your playbook.";
 
   return { identityLine, folders, valueLines, shareLine };
 }
@@ -4660,57 +4642,57 @@ function fanPlaybook(): PlaybookBlueprint {
     identityLine: "Football fan",
     folders: [
       { name: "My team",   subs: ["Offense", "Defense", "Highlights"] },
-      { name: "Favorites", subs: ["Must rewatch", "Send to friends"] },
-      { name: "Trends",    subs: ["College", "NFL", "Creators"] },
+      { name: "Favorites", subs: ["Rewatch", "Send to friends"] },
+      { name: "Ideas",     subs: ["College", "NFL"] },
     ],
     valueLines: [
-      "Save from X or Instagram in one tap",
-      "Stop losing clips in your camera roll",
-      "Find any play in seconds — not in a chat",
+      "Save from X or Instagram in one tap.",
+      "Stop losing clips in your camera roll.",
+      "Find them later without scrolling forever.",
     ],
-    shareLine: "Share a clip → it lands in your personal playbook",
+    shareLine: "Share a clip. It lands in your playbook.",
   };
 }
 
 const COACH_PAINS: { id: OnboardingPain; label: string }[] = [
-  { id: "like_nosave",      label: "I like plays constantly but rarely save them" },
-  { id: "save_noutilize",   label: "I save and send plays but never build a real playbook" },
-  { id: "screenshots_chat", label: "Everything lives in screenshots and group chats" },
-  { id: "install_gap",      label: "I mean to use clips for install / game prep and never do" },
+  { id: "like_nosave",      label: "I like a ton of plays and never save them" },
+  { id: "save_noutilize",   label: "I save them and never look at them again" },
+  { id: "screenshots_chat", label: "They're stuck in screenshots and group chats" },
+  { id: "install_gap",      label: "I say I'll install it and never do" },
 ];
 
 const FAN_PAINS: { id: OnboardingPain; label: string }[] = [
-  { id: "save_forget",     label: "I save clips all the time but never come back to them" },
-  { id: "cant_find",       label: "I know I saved it somewhere but can't find it" },
-  { id: "group_chat_lost", label: "Our group chat is full of clips nobody can find later" },
-  { id: "scroll_again",    label: "I'm always scrolling X trying to find that one play again" },
+  { id: "save_forget",     label: "I save clips and never go back to them" },
+  { id: "cant_find",       label: "I saved it somewhere and can't find it" },
+  { id: "group_chat_lost", label: "They're buried in a group chat" },
+  { id: "scroll_again",    label: "I end up scrolling X looking for it again" },
 ];
 
 function painMirror(pain: OnboardingPain | null, userType: OnboardingUserType | null): string {
   switch (pain) {
-    case "like_nosave":      return "Turn every like into a saved play";
-    case "save_noutilize":   return "Stop saving into the void";
-    case "screenshots_chat": return "Out of screenshots. Into a playbook.";
-    case "install_gap":      return "From scroll to install — finally";
-    case "save_forget":      return "Come back to every play you save";
-    case "cant_find":        return "Find any play in seconds";
-    case "group_chat_lost":  return "No more clips dying in the group chat";
-    case "scroll_again":     return "Stop scrolling X for that one play";
+    case "like_nosave":      return "Save the plays you actually like";
+    case "save_noutilize":   return "A playbook you'll actually open";
+    case "screenshots_chat": return "Out of your camera roll. Into a playbook.";
+    case "install_gap":      return "Save it. Install it.";
+    case "save_forget":      return "Keep the clips you save";
+    case "cant_find":        return "Find a play when you need it";
+    case "group_chat_lost":  return "Not another lost group chat clip";
+    case "scroll_again":     return "Stop hunting for that clip again";
     default:
-      return userType === "fan" ? "Save it. Find it. Share it." : "Every play, ready when you need it";
+      return userType === "fan" ? "Your football clips, in one place" : "Your plays, in one place";
   }
 }
 
 function painPreviewLine(pain: OnboardingPain): string {
   switch (pain) {
-    case "like_nosave":      return "One tap from a like to a categorized play";
-    case "save_noutilize":   return "Every save becomes a usable playbook entry";
-    case "screenshots_chat": return "One place instead of screenshots and dead chats";
-    case "install_gap":      return "Clips ready for install and game prep";
-    case "save_forget":      return "You'll come back to every play you save";
-    case "cant_find":        return "You'll find any play in under 5 seconds";
-    case "group_chat_lost":  return "No more clips dying in the group chat";
-    case "scroll_again":     return "Stop scrolling X for that one play";
+    case "like_nosave":      return "Like it on X. Save it here in one tap.";
+    case "save_noutilize":   return "Saved plays live in folders you'll open again.";
+    case "screenshots_chat": return "One playbook instead of screenshots and chats.";
+    case "install_gap":      return "Clips ready when you're putting in install.";
+    case "save_forget":      return "Your saves stay where you can find them.";
+    case "cant_find":        return "Find a play without digging around.";
+    case "group_chat_lost":  return "Not buried in a chat.";
+    case "scroll_again":     return "You won't have to go hunting on X again.";
   }
 }
 
@@ -4796,12 +4778,8 @@ function ValueRevealStep({ answers }: { answers: OnboardingAnswers }) {
   const book = answers.userType === "fan" ? fanPlaybook() : coachPlaybook(answers);
   return (
     <OnboardingStepShell
-      title={answers.userType === "fan"
-        ? "This is your personal playbook"
-        : "This is your playbook"}
-      subtitle={answers.userType === "fan"
-        ? "Built for how fans actually save football."
-        : `Personalized for a ${book.identityLine.toLowerCase()}.`}>
+      title="Here's your playbook"
+      subtitle={book.identityLine}>
 
       {/* Mini playbook UI */}
       <div style={{
@@ -4855,7 +4833,6 @@ function ValueRevealStep({ answers }: { answers: OnboardingAnswers }) {
         border:`1px solid ${STEEP.rust}33`,
         fontSize:13, color:STEEP.ink, lineHeight:1.45, letterSpacing:"-0.009em",
       }}>
-        <span style={{ fontWeight:600, color:STEEP.rust }}>How it works · </span>
         {book.shareLine}
       </div>
     </OnboardingStepShell>
@@ -4869,21 +4846,17 @@ function BuildingPlaybookStep({ onDone, answers }:
   const roleName = answers.role ? ROLE_LABEL[answers.role] : "coach";
   const stages = answers.userType === "fan"
     ? [
-        "Reading how you save plays",
-        "Building your personal library",
-        "Wiring X & Instagram share",
-        "Locking in your categories",
+        "Setting up your folders",
+        "Connecting X and Instagram",
+        "Almost done",
       ]
     : [
-        `Tuning a ${roleName.toLowerCase()} playbook`,
-        answers.focus === "scout" ? "Setting up opponent scout folders"
-          : answers.focus === "install" ? "Laying out install categories"
-          : answers.focus === "teach" ? "Building teach-tape folders"
-          : "Organizing scheme & trend folders",
-        answers.pain === "screenshots_chat" ? "Replacing screenshots & group chats"
-          : answers.pain === "like_nosave" ? "Closing the gap between like and save"
-          : "Wiring X & Instagram share",
-        "Calibrating your playbook",
+        `Setting up a ${roleName.toLowerCase()} book`,
+        answers.focus === "install" ? "Adding install folders"
+          : answers.focus === "show_guys" ? "Adding folders for your room"
+          : "Adding folders for plays you like",
+        "Connecting X and Instagram",
+        "Almost done",
       ];
   const [stage, setStage] = useState(0);
 
@@ -4934,7 +4907,7 @@ function BuildingPlaybookStep({ onDone, answers }:
         color: STEEP.ink, letterSpacing:"-0.03em",
         lineHeight:1.2, margin:0, marginBottom:14,
       }}>
-        Building your playbook…
+        Setting up your playbook…
       </h1>
       <p style={{ fontSize:14, color:STEEP.graphite, letterSpacing:"-0.009em",
         lineHeight:1.5, margin:0, transition:"opacity .25s", minHeight:21 }}>
@@ -4953,10 +4926,8 @@ function PlanPreviewStep({ answers }: { answers: OnboardingAnswers }) {
 
   return (
     <OnboardingStepShell
-      title="Your playbook is ready"
-      subtitle={answers.userType === "coach"
-        ? `Built for a ${book.identityLine.toLowerCase()} — not a generic coach.`
-        : "Built from how you actually watch football."}>
+      title="You're set"
+      subtitle={book.identityLine}>
 
       {/* Hero stat card */}
       <div style={{
@@ -4985,7 +4956,7 @@ function PlanPreviewStep({ answers }: { answers: OnboardingAnswers }) {
           </span>
         </div>
         <div style={{ fontSize:13, color:STEEP.graphite, lineHeight:1.5 }}>
-          ≈ {monthly} / month into {topFolders || "your categories"}
+          About {monthly} a month into {topFolders || "your folders"}
         </div>
       </div>
 
@@ -5249,9 +5220,9 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
   })();
 
   const continueLabel = (() => {
-    if (step === "value")   return "Looks right — continue";
-    if (step === "commit")  return "Build my playbook";
-    if (step === "preview") return "See my plan";
+    if (step === "value")   return "Continue";
+    if (step === "commit")  return "Set up my playbook";
+    if (step === "preview") return "See plans";
     if (step === "paywall") {
       if (answers.plan === "free") return "Continue for free";
       if (answers.plan === "team5" || answers.plan === "team10") return "Get the Team plan";
@@ -5299,26 +5270,25 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
     if (answers.userType === "fan") {
       return { quote: "Finally stopped losing clips in my camera roll.", by: "Marcus, football fan" };
     }
-    // Prefer role-matched proof so it feels like "coaches like me"
     switch (answers.role) {
       case "oc":
-        return { quote: "Install week is cleaner — concepts land in the right folder.", by: "OC, high school" };
+        return { quote: "I used to lose install clips in my camera roll. Not anymore.", by: "OC, high school" };
       case "dc":
-        return { quote: "Opponent scout used to live in a chat. Now the staff opens one book.", by: "DC, 5A" };
+        return { quote: "Staff finally looks at the same clips I saved.", by: "DC, 5A" };
       case "position":
-        return { quote: "My room's teach tape is finally searchable.", by: "WR coach, college" };
+        return { quote: "Easy to pull up examples for my room.", by: "WR coach" };
       case "analyst":
-        return { quote: "Cutups start themselves when clips are tagged on the way in.", by: "QC, FCS" };
+        return { quote: "Ideas I like actually stay organized.", by: "Analyst" };
       case "head":
-        return { quote: "Whole staff sees the same playbook — not three different chats.", by: "HC, high school" };
+        return { quote: "Whole staff's in one book instead of three chats.", by: "HC, high school" };
       default:
         break;
     }
     switch (answers.level) {
-      case "college": return { quote: "Our staff actually uses the same playbook now.", by: "OC, D2 program" };
-      case "youth":   return { quote: "Parents used to text me clips. Now they land in one place.", by: "Youth HC" };
-      case "pro":     return { quote: "Faster than digging through old group threads.", by: "NFL quality control" };
-      default:        return { quote: "Replaced screenshots, chats, and three half-baked folders.", by: "Coach Daniels, HS football" };
+      case "college": return { quote: "Staff actually opens this thing.", by: "OC, D2" };
+      case "youth":   return { quote: "Clips for the kids aren't scattered anymore.", by: "Youth HC" };
+      case "pro":     return { quote: "Beats digging through old threads.", by: "QC" };
+      default:        return { quote: "Screenshots and group chats were a mess.", by: "HS coach" };
     }
   })();
 
@@ -5378,8 +5348,8 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
 
         {step === "who" && (
           <OnboardingStepShell
-            title="You doom-scroll. You like a play. Then what?"
-            subtitle="60 seconds. We'll build a playbook around how you actually watch football.">
+            title="Quick setup"
+            subtitle="A few questions so we can build your playbook.">
             <OnboardingOption label="I'm a coach" selected={answers.userType === "coach"}
               onClick={() => pickAndAdvance({ userType:"coach" })} />
             <OnboardingOption label="I'm a fan" selected={answers.userType === "fan"}
@@ -5392,7 +5362,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
         {step === "level" && (
           <OnboardingStepShell
             title="What level do you coach?"
-            subtitle="We'll tune language and categories to your world.">
+            subtitle="So the folders make sense for your game.">
             {([
               ["hs", "High school"],
               ["college", "College"],
@@ -5408,12 +5378,12 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
 
         {step === "role" && (
           <OnboardingStepShell
-            title="What kind of coach are you?"
-            subtitle="This shapes the folders we build for you.">
-            {COACH_ROLES.map(({ id, label, hint }) => (
+            title="What's your role?"
+            subtitle="We'll set up folders for your side of the ball.">
+            {COACH_ROLES.map(({ id, label }) => (
               <OnboardingOption
                 key={id}
-                label={`${label}  ·  ${hint}`}
+                label={label}
                 selected={answers.role === id}
                 onClick={() => pickAndAdvance({ role:id })}
               />
@@ -5423,8 +5393,8 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
 
         {step === "focus" && (
           <OnboardingStepShell
-            title="What do you mostly save plays for?"
-            subtitle="Be specific — this is how we prove the product fits you.">
+            title="When you save a play, why?"
+            subtitle="Most guys save something because they want to run it.">
             {COACH_FOCUSES.map(({ id, label }) => (
               <OnboardingOption key={id} label={label}
                 selected={answers.focus === id}
@@ -5440,7 +5410,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
         {step === "staff" && (
           <OnboardingStepShell
             title="Do you share plays with other coaches?"
-            subtitle="Group chats are where plays go to die.">
+            subtitle="Optional — helps us know if you need a team plan.">
             <OnboardingOption label="No — just me"
               selected={answers.staff === "solo"}
               onClick={() => pickAndAdvance({ staff:"solo" })} />
@@ -5456,11 +5426,9 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
         {step === "pain" && (
           <OnboardingStepShell
             title={answers.userType === "coach"
-              ? "What usually happens when you see a play you like?"
-              : "Which one sounds like you?"}
-            subtitle={answers.userType === "coach"
-              ? "Be honest — most coaches never make it past the like."
-              : "Pick the closest fit."}>
+              ? "What happens after you like a play?"
+              : "Which is closest?"}
+            subtitle="Pick one.">
             {painOptions.map(({ id, label }) => (
               <OnboardingOption key={id} label={label}
                 selected={answers.pain === id}
@@ -5471,13 +5439,13 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
 
         {step === "volume" && (
           <OnboardingStepShell
-            title="How often do you see a play worth keeping?"
-            subtitle="Doom-scrolling counts. Likes count. Intention counts.">
+            title="How often are you saving plays?"
+            subtitle="Roughly.">
             {([
-              ["light", "A few times a week"],
-              ["medium", "Most days — a handful"],
-              ["heavy", "Every scroll session"],
-              ["constant", "Constantly — it's how I watch"],
+              ["light", "A few a week"],
+              ["medium", "Most days"],
+              ["heavy", "A lot — most times I open X"],
+              ["constant", "All the time"],
             ] as const).map(([id, label]) => (
               <OnboardingOption key={id} label={label}
                 selected={answers.volume === id}
@@ -5488,10 +5456,8 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
 
         {step === "commit" && (
           <OnboardingStepShell
-            title={answers.userType === "coach"
-              ? "Ready to stop liking plays into the void?"
-              : "Ready to keep the plays you actually care about?"}
-            subtitle="Tap below and we'll lock in the playbook we just showed you.">
+            title="Ready to set this up?"
+            subtitle="We'll use what you just told us.">
             <div style={{
               background: STEEP.white,
               border:`1.5px solid rgba(167,170,175,0.3)`,
@@ -5514,7 +5480,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                 )}
                 {answers.pain && <PreviewLine text={painPreviewLine(answers.pain)} />}
                 {answers.volume && (
-                  <PreviewLine text={`~${estimateMonthlyClips(answers.volume)} worth-keeping plays / month`} />
+                  <PreviewLine text={`About ${estimateMonthlyClips(answers.volume)} plays a month`} />
                 )}
               </div>
             </div>
