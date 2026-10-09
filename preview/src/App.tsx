@@ -4532,18 +4532,18 @@ function onboardingSteps(userType: OnboardingUserType | null): OnboardingStepId[
   return ["who"];
 }
 
-const COACH_ROLES: { id: OnboardingRole; label: string }[] = [
-  { id: "head",     label: "Head coach" },
-  { id: "oc",       label: "Offensive coordinator" },
-  { id: "dc",       label: "Defensive coordinator" },
-  { id: "position", label: "Position coach" },
-  { id: "analyst",  label: "Analyst" },
+const COACH_ROLES: { id: OnboardingRole; label: string; icon: string }[] = [
+  { id: "head",     label: "Head coach",              icon: "military_tech" },
+  { id: "oc",       label: "Offensive coordinator",   icon: "sports_football" },
+  { id: "dc",       label: "Defensive coordinator",   icon: "shield" },
+  { id: "position", label: "Position coach",          icon: "person" },
+  { id: "analyst",  label: "Analyst",                 icon: "analytics" },
 ];
 
-const COACH_FOCUSES: { id: OnboardingFocus; label: string }[] = [
-  { id: "install",   label: "I want to install it" },
-  { id: "later",     label: "It looked good — might run it later" },
-  { id: "show_guys", label: "I want to show my guys" },
+const COACH_FOCUSES: { id: OnboardingFocus; label: string; icon: string }[] = [
+  { id: "install",   label: "I want to install it",              icon: "assignment_turned_in" },
+  { id: "later",     label: "It looked good — might run it later", icon: "bookmark" },
+  { id: "show_guys", label: "I want to show my guys",            icon: "groups" },
 ];
 
 const LEVEL_LABEL: Record<OnboardingLevel, string> = {
@@ -4654,18 +4654,18 @@ function fanPlaybook(): PlaybookBlueprint {
   };
 }
 
-const COACH_PAINS: { id: OnboardingPain; label: string }[] = [
-  { id: "like_nosave",      label: "I like a ton of plays and never save them" },
-  { id: "save_noutilize",   label: "I save them and never look at them again" },
-  { id: "screenshots_chat", label: "They're stuck in screenshots and group chats" },
-  { id: "install_gap",      label: "I say I'll install it and never do" },
+const COACH_PAINS: { id: OnboardingPain; label: string; icon: string }[] = [
+  { id: "like_nosave",      label: "I like a ton of plays and never save them",     icon: "thumb_up" },
+  { id: "save_noutilize",   label: "I save them and never look at them again",      icon: "bookmark_added" },
+  { id: "screenshots_chat", label: "They're stuck in screenshots and group chats",  icon: "photo_library" },
+  { id: "install_gap",      label: "I say I'll install it and never do",            icon: "event_busy" },
 ];
 
-const FAN_PAINS: { id: OnboardingPain; label: string }[] = [
-  { id: "save_forget",     label: "I save clips and never go back to them" },
-  { id: "cant_find",       label: "I saved it somewhere and can't find it" },
-  { id: "group_chat_lost", label: "They're buried in a group chat" },
-  { id: "scroll_again",    label: "I end up scrolling X looking for it again" },
+const FAN_PAINS: { id: OnboardingPain; label: string; icon: string }[] = [
+  { id: "save_forget",     label: "I save clips and never go back to them", icon: "bookmark_added" },
+  { id: "cant_find",       label: "I saved it somewhere and can't find it", icon: "search_off" },
+  { id: "group_chat_lost", label: "They're buried in a group chat",         icon: "forum" },
+  { id: "scroll_again",    label: "I end up scrolling X looking for it again", icon: "replay" },
 ];
 
 function painMirror(pain: OnboardingPain | null, userType: OnboardingUserType | null): string {
@@ -4707,26 +4707,58 @@ function estimateMonthlyClips(v: OnboardingVolume | null): number {
   }
 }
 
+function MaterialIcon({ name, filled = false }: { name: string; filled?: boolean }) {
+  return (
+    <span
+      className="material-symbols-outlined"
+      aria-hidden="true"
+      style={{
+        fontVariationSettings: filled
+          ? `"FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24`
+          : `"FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24`,
+      }}
+    >
+      {name}
+    </span>
+  );
+}
+
 function OnboardingOption({
-  label, selected, onClick, multi = false,
-}: { label: string; selected: boolean; onClick: () => void; multi?: boolean }) {
+  label, selected, onClick, multi = false, icon,
+}: {
+  label: string; selected: boolean; onClick: () => void;
+  multi?: boolean; icon?: string;
+}) {
   return (
     <button type="button" onClick={onClick}
       style={{
         width:"100%", textAlign:"left",
         background: selected ? STEEP.apricotWash : STEEP.white,
         border:`1.5px solid ${selected ? STEEP.rust : "rgba(167,170,175,0.35)"}`,
-        borderRadius:16, padding:"16px 18px",
+        borderRadius:16, padding:"14px 16px",
         cursor:"pointer",
         transition:"border-color .15s, background .15s, transform .15s",
         transform: selected ? "scale(0.985)" : "scale(1)",
-        display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:14,
+        display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
       }}>
-      <span style={{ fontSize:15, color:STEEP.ink, letterSpacing:"-0.009em",
-        fontWeight: selected ? 500 : 400, lineHeight:1.45, flex:1 }}>{label}</span>
+      <div style={{ display:"flex", alignItems:"center", gap:12, flex:1, minWidth:0 }}>
+        {icon && (
+          <div style={{
+            width:40, height:40, borderRadius:12, flexShrink:0,
+            background: selected ? STEEP.rust : STEEP.fog,
+            color: selected ? "#fff" : STEEP.ink,
+            display:"flex", alignItems:"center", justifyContent:"center",
+            transition:"background .15s, color .15s",
+          }}>
+            <MaterialIcon name={icon} filled={selected} />
+          </div>
+        )}
+        <span style={{ fontSize:15, color:STEEP.ink, letterSpacing:"-0.009em",
+          fontWeight: selected ? 500 : 400, lineHeight:1.4 }}>{label}</span>
+      </div>
       {multi ? (
         <div style={{
-          width:20, height:20, borderRadius:6, flexShrink:0, marginTop:2,
+          width:20, height:20, borderRadius:6, flexShrink:0,
           border:`1.5px solid ${selected ? STEEP.rust : STEEP.dove}`,
           background: selected ? STEEP.rust : "transparent",
           display:"flex", alignItems:"center", justifyContent:"center",
@@ -4740,7 +4772,7 @@ function OnboardingOption({
         </div>
       ) : selected ? (
         <div style={{ width:8, height:8, borderRadius:"50%",
-          background:STEEP.rust, flexShrink:0, marginTop:7 }} />
+          background:STEEP.rust, flexShrink:0 }} />
       ) : null}
     </button>
   );
@@ -5088,18 +5120,14 @@ function ReverseTrialSheet({ onAccept, onDecline }:
         </div>
 
         <div style={{ position:"relative" }}>
-          <div style={{ fontSize:11, color:STEEP.rust, fontWeight:600,
-            letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>
-            One-time offer
-          </div>
           <h2 style={{ fontFamily:STEEP.serif, fontSize:28, fontWeight:400,
             color:STEEP.ink, letterSpacing:"-0.03em", lineHeight:1.2,
             margin:0, marginBottom:12 }}>
-            Try Playbook Pro free for 14 days
+            Try Pro free for 14 days
           </h2>
           <p style={{ fontSize:15, color:STEEP.graphite, letterSpacing:"-0.009em",
             lineHeight:1.55, margin:0, marginBottom:24 }}>
-            No credit card. No commitment. See if it's worth it before you decide.
+            No card needed. Cancel anytime.
           </p>
 
           <div style={{ display:"flex", flexDirection:"column", gap:10,
@@ -5350,9 +5378,11 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
           <OnboardingStepShell
             title="Quick setup"
             subtitle="A few questions so we can build your playbook.">
-            <OnboardingOption label="I'm a coach" selected={answers.userType === "coach"}
+            <OnboardingOption icon="sports" label="I'm a coach"
+              selected={answers.userType === "coach"}
               onClick={() => pickAndAdvance({ userType:"coach" })} />
-            <OnboardingOption label="I'm a fan" selected={answers.userType === "fan"}
+            <OnboardingOption icon="stadium" label="I'm a fan"
+              selected={answers.userType === "fan"}
               onClick={() => pickAndAdvance({
                 userType:"fan", level:null, role:null, focus:null, staff:null,
               })} />
@@ -5364,12 +5394,12 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
             title="What level do you coach?"
             subtitle="So the folders make sense for your game.">
             {([
-              ["hs", "High school"],
-              ["college", "College"],
-              ["youth", "Youth"],
-              ["pro", "Pro"],
-            ] as const).map(([id, label]) => (
-              <OnboardingOption key={id} label={label}
+              ["hs", "High school", "school"],
+              ["college", "College", "account_balance"],
+              ["youth", "Youth", "diversity_3"],
+              ["pro", "Pro", "emoji_events"],
+            ] as const).map(([id, label, icon]) => (
+              <OnboardingOption key={id} icon={icon} label={label}
                 selected={answers.level === id}
                 onClick={() => pickAndAdvance({ level:id })} />
             ))}
@@ -5380,9 +5410,10 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
           <OnboardingStepShell
             title="What's your role?"
             subtitle="We'll set up folders for your side of the ball.">
-            {COACH_ROLES.map(({ id, label }) => (
+            {COACH_ROLES.map(({ id, label, icon }) => (
               <OnboardingOption
                 key={id}
+                icon={icon}
                 label={label}
                 selected={answers.role === id}
                 onClick={() => pickAndAdvance({ role:id })}
@@ -5395,8 +5426,8 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
           <OnboardingStepShell
             title="When you save a play, why?"
             subtitle="Most guys save something because they want to run it.">
-            {COACH_FOCUSES.map(({ id, label }) => (
-              <OnboardingOption key={id} label={label}
+            {COACH_FOCUSES.map(({ id, label, icon }) => (
+              <OnboardingOption key={id} icon={icon} label={label}
                 selected={answers.focus === id}
                 onClick={() => pickAndAdvance({ focus:id })} />
             ))}
@@ -5411,13 +5442,13 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
           <OnboardingStepShell
             title="Do you share plays with other coaches?"
             subtitle="Optional — helps us know if you need a team plan.">
-            <OnboardingOption label="No — just me"
+            <OnboardingOption icon="person" label="No — just me"
               selected={answers.staff === "solo"}
               onClick={() => pickAndAdvance({ staff:"solo" })} />
-            <OnboardingOption label="Yes — 2 to 6 coaches"
+            <OnboardingOption icon="group" label="Yes — 2 to 6 coaches"
               selected={answers.staff === "staff"}
               onClick={() => pickAndAdvance({ staff:"staff" })} />
-            <OnboardingOption label="Yes — larger staff"
+            <OnboardingOption icon="groups" label="Yes — larger staff"
               selected={answers.staff === "large"}
               onClick={() => pickAndAdvance({ staff:"large" })} />
           </OnboardingStepShell>
@@ -5429,8 +5460,8 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
               ? "What happens after you like a play?"
               : "Which is closest?"}
             subtitle="Pick one.">
-            {painOptions.map(({ id, label }) => (
-              <OnboardingOption key={id} label={label}
+            {painOptions.map(({ id, label, icon }) => (
+              <OnboardingOption key={id} icon={icon} label={label}
                 selected={answers.pain === id}
                 onClick={() => pickAndAdvance({ pain:id })} />
             ))}
@@ -5442,12 +5473,12 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
             title="How often are you saving plays?"
             subtitle="Roughly.">
             {([
-              ["light", "A few a week"],
-              ["medium", "Most days"],
-              ["heavy", "A lot — most times I open X"],
-              ["constant", "All the time"],
-            ] as const).map(([id, label]) => (
-              <OnboardingOption key={id} label={label}
+              ["light", "A few a week", "calendar_view_week"],
+              ["medium", "Most days", "today"],
+              ["heavy", "A lot — most times I open X", "bolt"],
+              ["constant", "All the time", "all_inclusive"],
+            ] as const).map(([id, label, icon]) => (
+              <OnboardingOption key={id} icon={icon} label={label}
                 selected={answers.volume === id}
                 onClick={() => pickAndAdvance({ volume:id })} />
             ))}
