@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useContext, createContext, useMemo } from "react";
 import IPhoneSimulator from "./IPhoneSimulator";
+import { supabase } from "./lib/supabase";
 
 // ─── Native iOS bridge (StoreKit purchases + Pro entitlement) ─────────────────
 // The Swift app injects window.__pbPro / dispatches "pb-entitlement", and listens
@@ -414,6 +415,24 @@ function makeCategorizedPlay(url: string, categoryId: string, categoryName?: str
     platform: detectPlatform(url),
     sourceUrl: url,
     savedAt: catName,
+    liked: false,
+    views: 0,
+    addedAt: new Date(),
+    gradient: ["#1a2440", "#0d0d0f"],
+  };
+}
+
+/** A clip shared from the extension that hasn't been categorized yet. It shows
+ *  up in the feed with the normal "Save to Playbook" prompt so the user sorts
+ *  it in-app, later. */
+function makeUncategorizedPlay(url: string): UserPlayItem {
+  return {
+    id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    categoryId: "",
+    title: "New clip",
+    platform: detectPlatform(url),
+    sourceUrl: url,
+    savedAt: null,
     liked: false,
     views: 0,
     addedAt: new Date(),
@@ -5414,11 +5433,33 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
   const [email, setEmail]     = useState("");
   const [pass, setPass]       = useState("");
   const [loading, setLoading] = useState(false);
+  const [authErr, setAuthErr] = useState<string | null>(null);
 
-  function submitEmail() {
+  async function submitEmail() {
     if (!email || pass.length < 6) return;
     setLoading(true);
-    setTimeout(() => { setLoading(false); onDone(); }, 900);
+    setAuthErr(null);
+    // Try to sign in; if the account doesn't exist yet, create it.
+    const signIn = await supabase.auth.signInWithPassword({ email, password: pass });
+    if (!signIn.error && signIn.data.session) {
+      setLoading(false);
+      onDone();
+      return;
+    }
+    const signUp = await supabase.auth.signUp({ email, password: pass });
+    setLoading(false);
+    if (signUp.error) {
+      // If sign-up fails because the user exists, the original sign-in error
+      // (wrong password) is the useful message.
+      setAuthErr(signIn.error?.message ?? signUp.error.message);
+      return;
+    }
+    if (signUp.data.session) {
+      onDone();
+    } else {
+      // Email confirmation is on — no session until the link is clicked.
+      setAuthErr("Check your email to confirm your account, then sign in.");
+    }
   }
 
   if (phase === "onboarding") {
@@ -5521,6 +5562,12 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
                 color:STEEP.ink, fontSize:15, outline:"none",
                 letterSpacing:"-0.009em" }} />
           </div>
+          {authErr && (
+            <div style={{ fontSize:13, color:"#c0392b", lineHeight:1.4,
+              marginBottom:14, letterSpacing:"-0.009em" }}>
+              {authErr}
+            </div>
+          )}
           <GlowButton accent
             label={loading ? "…" : "Continue"}
             onPress={submitEmail} />
@@ -5725,6 +5772,17 @@ export default function App() {
   // ?skip=1 in the URL bypasses the auth screen for quick preview
   const skipAuth = new URLSearchParams(window.location.search).get("skip") === "1";
   const [authed, setAuthed]   = useState(skipAuth);
+
+  // Real Supabase session gates the app. onAuthStateChange flips `authed`
+  // on sign-in / sign-out and restores a persisted session on launch.
+  useEffect(() => {
+    if (skipAuth) return;
+    supabase.auth.getSession().then(({ data }) => setAuthed(!!data.session));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthed(!!session);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, [skipAuth]);
   const [screen, setScreen]   = useState<Screen>({ id:"feed" });
   const [theme, setTheme]     = useState<ThemeMode>("light");
   const isDark                = theme === "dark";
@@ -5753,19 +5811,29 @@ export default function App() {
   // ── Clips categorized in the Share Extension (from the App Group) ─────────
   // The native app pushes already-categorized clips via "pb-add-categorized".
   // We add them to the feed/playbook and confirm so native can drop them.
+  const ingestedShares = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const onCategorized = (e: Event) => {
-      const items = (e as CustomEvent).detail?.items;
+    const ingest = (items: unknown) => {
       if (!Array.isArray(items)) return;
-      const ingested: string[] = [];
-      items.forEach((it: { url?: string; categoryId?: string; categoryName?: string }) => {
-        if (it && typeof it.url === "string" && typeof it.categoryId === "string") {
+      const done: string[] = [];
+      (items as { url?: string; categoryId?: string; categoryName?: string }[]).forEach(it => {
+        if (!it || typeof it.url !== "string" || ingestedShares.current.has(it.url)) return;
+        ingestedShares.current.add(it.url);
+        if (typeof it.categoryId === "string" && it.categoryId) {
+          // Legacy path: already categorized in the extension.
           addPlay(makeCategorizedPlay(it.url, it.categoryId, it.categoryName));
-          ingested.push(it.url);
+        } else {
+          // New path: bare URL — show it uncategorized so the user sorts it in-app.
+          addPlay(makeUncategorizedPlay(it.url));
         }
+        done.push(it.url);
       });
-      if (ingested.length) NativeBridge.post({ type: "categorizedIngested", urls: ingested });
+      if (done.length) NativeBridge.post({ type: "categorizedIngested", urls: done });
     };
+    // Race-proof: pick up whatever native stashed before this listener mounted,
+    // then keep listening for live shares while the app is open.
+    ingest((window as any).__pbPendingCategorized);
+    const onCategorized = (e: Event) => ingest((e as CustomEvent).detail?.items);
     window.addEventListener("pb-add-categorized", onCategorized as EventListener);
     return () => window.removeEventListener("pb-add-categorized", onCategorized as EventListener);
     // eslint-disable-next-line react-hooks/exhaustive-deps
