@@ -16,6 +16,7 @@ final class PlaybookWebBridge: NSObject, WKScriptMessageHandler, ASAuthorization
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
+        config.preferences.javaScriptCanOpenWindowsAutomatically = true
         config.defaultWebpagePreferences.allowsContentJavaScript = true
         config.userContentController.add(bridge, name: "playbook")
         return config

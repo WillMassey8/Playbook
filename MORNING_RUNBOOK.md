@@ -1,5 +1,7 @@
 # Morning — 15-minute submission unblock
 
+**TL;DR card:** [`SUBMIT_NOW.md`](./SUBMIT_NOW.md)
+
 Do these in order. Details: `SUBMISSION_CHECKLIST.md`.
 
 ## 0. Smoke-test Preview (already green)
