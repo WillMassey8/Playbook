@@ -31,7 +31,7 @@ Then switch back to `https://playbook-pink.vercel.app` after Promote.
 ## 2. Supabase functions
 
 ```bash
-supabase functions deploy ingest-shared-url
+supabase functions deploy ingest-shared-url   # includes category-preserve + URL canonicalize
 supabase functions deploy resolve-playback-url
 supabase functions deploy delete-account
 ```

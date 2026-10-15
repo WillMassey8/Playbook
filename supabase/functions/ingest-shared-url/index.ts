@@ -193,6 +193,37 @@ async function resolveLinkMetadata(
 }
 
 
+
+/** Collapse common social URL variants so re-shares match the same play row. */
+function canonicalizeSourceUrl(raw: string): string {
+  const u = new URL(raw);
+  u.hash = "";
+  // Strip tracking params commonly added by share sheets.
+  for (const key of [...u.searchParams.keys()]) {
+    if (
+      key.startsWith("utm_") ||
+      key === "s" ||
+      key === "t" ||
+      key === "ref_src" ||
+      key === "ref_url" ||
+      key === "fbclid" ||
+      key === "igshid"
+    ) {
+      u.searchParams.delete(key);
+    }
+  }
+  let host = u.hostname.replace(/^www\./, "").toLowerCase();
+  if (host === "mobile.twitter.com" || host === "mobile.x.com" || host === "twitter.com") {
+    host = "x.com";
+  }
+  u.hostname = host;
+  // Drop trailing slash on path (except root).
+  if (u.pathname.length > 1 && u.pathname.endsWith("/")) {
+    u.pathname = u.pathname.replace(/\/+$/, "");
+  }
+  return u.toString();
+}
+
 async function resolveCategoryId(
   admin: ReturnType<typeof createClient>,
   userId: string,
@@ -280,7 +311,7 @@ Deno.serve(async (req) => {
 
     let normalizedUrl: string;
     try {
-      normalizedUrl = new URL(body.source_url).toString();
+      normalizedUrl = canonicalizeSourceUrl(body.source_url);
     } catch {
       return new Response(JSON.stringify({ error: "Invalid URL" }), {
         status: 400,
