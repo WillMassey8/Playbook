@@ -16,6 +16,8 @@ type SourcePlatform =
 interface IngestRequest {
   source_url: string;
   category_id?: string;
+  /** When category_id is not a UUID (web preview ids), resolve/create by name. */
+  category_name?: string;
   title?: string;
 }
 
@@ -190,6 +192,55 @@ async function resolveLinkMetadata(
   return { title: "Saved link" };
 }
 
+
+async function resolveCategoryId(
+  admin: ReturnType<typeof createClient>,
+  userId: string,
+  categoryId: string | undefined,
+  categoryName: string | undefined,
+): Promise<string | null> {
+  const uuidRe =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (categoryId && uuidRe.test(categoryId)) return categoryId;
+
+  const name = (categoryName || "").trim();
+  if (!name) return null;
+
+  const { data: existing } = await admin
+    .from("categories")
+    .select("id, name")
+    .eq("user_id", userId);
+
+  const match = (existing ?? []).find(
+    (c: { id: string; name: string }) =>
+      c.name.toLowerCase() === name.toLowerCase(),
+  );
+  if (match) return match.id;
+
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48) || "category";
+
+  const { data: created, error } = await admin
+    .from("categories")
+    .insert({
+      user_id: userId,
+      name,
+      slug: `${slug}-${crypto.randomUUID().slice(0, 8)}`,
+      sort_order: 99,
+    })
+    .select("id")
+    .single();
+
+  if (error || !created) {
+    console.error("category create failed", error);
+    return null;
+  }
+  return created.id as string;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -242,11 +293,18 @@ Deno.serve(async (req) => {
     const metadata = await resolveLinkMetadata(platform, normalizedUrl);
     const admin = createClient(supabaseUrl, serviceRoleKey);
 
+    const resolvedCategoryId = await resolveCategoryId(
+      admin,
+      userId,
+      body.category_id,
+      body.category_name,
+    );
+
     const { data: play, error: insertError } = await admin
       .from("plays")
       .insert({
         user_id: userId,
-        category_id: body.category_id ?? null,
+        category_id: resolvedCategoryId,
         source_url: normalizedUrl,
         source_platform: platform,
         title: body.title ?? metadata.title ?? null,

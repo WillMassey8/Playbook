@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useContext, createContext, useMemo } from "react";
 import IPhoneSimulator from "./IPhoneSimulator";
 import { supabase } from "./lib/supabase";
-import { ingestPlayToAccount } from "./lib/plays";
+import { ingestPlayToAccount, fetchRemotePlays, fetchRemoteCategories } from "./lib/plays";
 import {
   deleteAccount,
   signOutAccount,
@@ -3324,9 +3324,10 @@ function ImportLinkSheet({ onClose, onImported, initialUrl, mandatory }:
   );
 }
 
-function ProfileScreen({ onSignOut, onDeleteAccount }: {
+function ProfileScreen({ onSignOut, onDeleteAccount, onHowItWorks }: {
   onSignOut:()=>void;
   onDeleteAccount:()=>Promise<void> | void;
+  onHowItWorks:()=>void;
 }) {
   const { isDark, toggleTheme } = useTheme();
   const { addPlay } = usePlays();
@@ -3586,7 +3587,7 @@ function ProfileScreen({ onSignOut, onDeleteAccount }: {
 
           {/* ── Support ───────────────────────────────────────────────────── */}
           <SettingsGroup label="Support">
-            <SettingsRow onPress={() => toast("How It Works guide coming soon")}
+            <SettingsRow onPress={onHowItWorks}
               iconBg="rgba(92,156,255,0.18)" label="How It Works"
               iconEl={<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <circle cx="7" cy="7" r="6" stroke="#5c9cff" strokeWidth="1.4"/>
@@ -3594,14 +3595,14 @@ function ProfileScreen({ onSignOut, onDeleteAccount }: {
                   strokeLinecap="round"/>
               </svg>}
             />
-            <SettingsRow onPress={() => toast("Feedback form coming soon")}
+            <SettingsRow onPress={() => window.open("mailto:support@playbook.app?subject=Playbook%20Feedback", "_blank")}
               iconBg="rgba(255,154,60,0.18)" label="Send Feedback"
               iconEl={<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M1 1h12v9H8l-4 3V10H1V1z"
                   stroke="#ff9a3c" strokeWidth="1.5" strokeLinejoin="round"/>
               </svg>}
             />
-            <SettingsRow onPress={() => toast("Rate us on the App Store — coming soon")}
+            <SettingsRow onPress={() => toast("Thanks — rate Playbook when it is live on the App Store")}
               iconBg="rgba(92,156,255,0.18)" label="Rate Playbook" last
               iconEl={<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M7 1l1.8 3.6L13 5.3l-3 2.9.7 4.1L7 10.4 3.3 12.3l.7-4.1-3-2.9 4.2-.7z"
@@ -5479,9 +5480,15 @@ function SharedClipIntakeOverlay({
     setSaving(true);
     setErr(null);
     const catName = CATEGORIES.find(c => c.id === selectedId)?.name || "Playbook";
-    // Preview category ids are local strings; only send real UUIDs to Supabase.
+    // Preview category ids are local strings ("1","2",…). Edge function resolves
+    // category_name → user UUID (match or create) so categorized saves persist.
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedId);
-    const remote = await ingestPlayToAccount(play.sourceUrl, isUuid ? selectedId : null, catName);
+    const remote = await ingestPlayToAccount(
+      play.sourceUrl,
+      isUuid ? selectedId : null,
+      catName,
+      catName,
+    );
     setSaving(false);
     if (!remote.ok && remote.error !== "Not signed in") {
       setErr(remote.error || "Couldn't save — try again.");
@@ -5985,6 +5992,48 @@ export default function App() {
   // ── User-imported plays (persisted to localStorage) ───────────────────────
   const [userPlays, setUserPlays] = useState<UserPlayItem[]>(loadUserPlays);
   useEffect(() => { syncUserPlays(userPlays); }, [userPlays]);
+
+  // Merge durable Supabase plays into local library after sign-in.
+  useEffect(() => {
+    if (!authed || skipAuth) return;
+    let cancelled = false;
+    void (async () => {
+      const [rows, cats] = await Promise.all([fetchRemotePlays(), fetchRemoteCategories()]);
+      if (cancelled || !rows.length) return;
+      const nameById = new Map(cats.map(c => [c.id, c.name]));
+      const localIdByName = new Map(CATEGORIES.map(c => [c.name.toLowerCase(), c.id]));
+      setUserPlays(prev => {
+        const byUrl = new Set(prev.map(p => p.sourceUrl));
+        const extras: UserPlayItem[] = [];
+        for (const row of rows) {
+          if (!row.source_url || byUrl.has(row.source_url)) continue;
+          byUrl.add(row.source_url);
+          const platform = (row.source_platform === "twitter" || row.source_platform === "instagram"
+            || row.source_platform === "tiktok" || row.source_platform === "facebook")
+            ? row.source_platform
+            : detectPlatform(row.source_url);
+          const remoteName = row.category_id ? nameById.get(row.category_id) : undefined;
+          const localCatId = remoteName
+            ? (localIdByName.get(remoteName.toLowerCase()) || "1")
+            : "inbox";
+          extras.push({
+            id: `remote-${row.id}`,
+            categoryId: localCatId,
+            title: row.title || "Saved clip",
+            platform,
+            sourceUrl: row.source_url,
+            savedAt: remoteName || null,
+            liked: false,
+            views: 0,
+            addedAt: new Date(row.created_at),
+            gradient: ["#1a2440", "#0d0d0f"],
+          } as UserPlayItem);
+        }
+        return extras.length ? [...extras, ...prev] : prev;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [authed, skipAuth]);
   const addPlay = (p: UserPlayItem) => {
     USER_PLAYS = [p, ...USER_PLAYS];        // keep the module mirror current now
     setUserPlays(prev => [p, ...prev]);
@@ -6291,6 +6340,7 @@ export default function App() {
                     ? <LikedScreen navigate={navigate} />
                     : screen.id === "profile"
                     ? <ProfileScreen
+                        onHowItWorks={() => navigate({ id: "share-ext" })}
                         onSignOut={async () => {
                           await signOutAccount();
                           setUserPlays([]);

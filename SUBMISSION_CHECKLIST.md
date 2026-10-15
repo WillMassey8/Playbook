@@ -78,7 +78,8 @@ Then Archive → TestFlight (share extension with **Saved to Playbook ✓**).
 3. From X: Share → Playbook → see **Saved to Playbook ✓**  
 4. Reopen app → **full-screen video** + categorize → Save to Playbook  
 5. Clip appears in Playbook category  
-6. Kill app, reopen → clip still there (Supabase session + ingest)  
+6. Kill app, reopen → clip still there (Supabase session + ingest; web merges remote plays)  
+6b. Categorized clip keeps its play type on reopen (ingest resolves `category_name` → UUID)  
 7. Profile → Privacy Policy / Terms open hosted pages  
 8. Profile → Delete Account (type DELETE) removes account / returns to auth  
 

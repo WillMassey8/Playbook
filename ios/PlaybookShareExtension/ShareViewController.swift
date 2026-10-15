@@ -118,39 +118,64 @@ class ShareViewController: UIViewController {
             guard let raw else { completion(nil); return }
             let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             // Prefer first http(s) URL embedded in the text (X/IG often wrap copy).
-            if let match = trimmed.range(of: #"https?://[^\s]+"#, options: .regularExpression) {
+            if let match = trimmed.range(of: #"https?://[^\s<>\"']+"#, options: .regularExpression) {
                 var candidate = String(trimmed[match])
-                while candidate.last?.isPunctuation == true { candidate.removeLast() }
+                while let last = candidate.last, ".,);]\"'".contains(last) {
+                    candidate.removeLast()
+                }
                 completion(URL(string: candidate))
                 return
             }
             completion(URL(string: trimmed))
         }
 
-        for provider in providers {
-            if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
-                provider.loadItem(forTypeIdentifier: UTType.url.identifier) { value, _ in
+        let typeOrder = [
+            UTType.url.identifier,
+            "public.url",
+            UTType.plainText.identifier,
+            "public.text",
+            UTType.propertyList.identifier,
+        ]
+
+        func tryProvider(_ index: Int) {
+            guard index < providers.count else {
+                completion(nil)
+                return
+            }
+            let provider = providers[index]
+            func next() { tryProvider(index + 1) }
+
+            for typeId in typeOrder where provider.hasItemConformingToTypeIdentifier(typeId) {
+                provider.loadItem(forTypeIdentifier: typeId, options: nil) { value, _ in
                     if let url = value as? URL {
                         completion(url)
-                    } else if let str = value as? String {
-                        finish(str)
-                    } else {
-                        completion(nil)
+                        return
                     }
+                    if let str = value as? String {
+                        finish(str)
+                        return
+                    }
+                    if let data = value as? Data, let str = String(data: data, encoding: .utf8) {
+                        finish(str)
+                        return
+                    }
+                    if let dict = value as? [String: Any] {
+                        // Safari / some apps wrap the URL in a property list.
+                        if let payload = dict[NSExtensionJavaScriptPreprocessingResultsKey] as? [String: Any] {
+                            let raw = (payload["URL"] as? String) ?? (payload["url"] as? String)
+                            if let raw {
+                                finish(raw)
+                                return
+                            }
+                        }
+                    }
+                    next()
                 }
                 return
             }
+            next()
         }
 
-        for provider in providers {
-            if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
-                provider.loadItem(forTypeIdentifier: UTType.plainText.identifier) { value, _ in
-                    finish(value as? String)
-                }
-                return
-            }
-        }
-
-        completion(nil)
+        tryProvider(0)
     }
 }
