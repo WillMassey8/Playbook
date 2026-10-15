@@ -64,6 +64,11 @@ struct AuthLandingView: View {
                         phase = .signIn
                     }
                     .buttonStyle(SecondaryButtonStyle())
+
+                    Text("Onboarding → Sign in with Apple → your playbook.")
+                        .font(.pbCaption)
+                        .foregroundStyle(.white.opacity(0.35))
+                        .multilineTextAlignment(.center)
                 }
                 .padding(.horizontal, Spacing.lg)
                 .padding(.bottom, Spacing.xxl)

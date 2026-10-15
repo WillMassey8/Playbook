@@ -5,20 +5,20 @@ struct HowToShareView: View {
 
     private let steps: [(icon: String, title: String, detail: String)] = [
         ("1.circle.fill", "Find a clip on X, TikTok, Instagram, or Facebook", "Open any post with a play you want to save."),
-        ("2.circle.fill", "Tap Share", "Use the share button on the post."),
-        ("3.circle.fill", "Choose Playbook AI", "Select Playbook from the share sheet."),
-        ("4.circle.fill", "Pick a category", "Tag the clip so you can find it later in your Playbook."),
+        ("2.circle.fill", "Tap Share → Playbook", "You’ll see Saved to Playbook ✓ — no questions in the share sheet."),
+        ("3.circle.fill", "Open Playbook", "The clip pops full-screen with the video playing."),
+        ("4.circle.fill", "Categorize it", "Pick a play type so it lands in your playbook."),
     ]
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.lg) {
-                    Text("Save clips in two taps")
+                    Text("Share now. Sort later.")
                         .font(.pbTitle)
                         .foregroundStyle(.white)
 
-                    Text("Share from X, TikTok, Instagram, or Facebook straight into your playbook — no more lost group chat clips.")
+                    Text("Share from X, TikTok, Instagram, or Facebook — Playbook saves it instantly. Categorize when you’re back in the app.")
                         .font(.pbCallout)
                         .foregroundStyle(.white.opacity(0.55))
 

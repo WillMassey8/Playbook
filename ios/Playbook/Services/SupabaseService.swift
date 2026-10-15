@@ -54,6 +54,15 @@ final class SupabaseService: ObservableObject {
         try await client.auth.signOut()
     }
 
+    /// Sign in with Apple via Supabase Auth (id token + nonce).
+    func signInWithApple(idToken: String, nonce: String) async throws {
+        isLoading = true
+        defer { isLoading = false }
+        try await client.auth.signInWithIdToken(
+            credentials: .init(provider: .apple, idToken: idToken, nonce: nonce)
+        )
+    }
+
     func fetchCategories() async throws -> [Category] {
         try await client
             .from("categories")

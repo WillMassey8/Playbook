@@ -3,31 +3,33 @@ import SwiftUI
 @main
 struct PlaybookApp: App {
     @StateObject private var supabase = SupabaseService.shared
-    @State private var pendingSharedURL: URL?
+    @State private var pendingSharedURLs: [URL] = []
     @State private var showAddClip = false
 
     var body: some Scene {
         WindowGroup {
             RootView(
-                pendingSharedURL: $pendingSharedURL,
+                pendingSharedURLs: $pendingSharedURLs,
                 showAddClip: $showAddClip
             )
             .environmentObject(supabase)
             .preferredColorScheme(.dark)
             .onOpenURL { url in
-                // Called when share extension writes to App Group and opens playbook://share
                 if url.scheme == "playbook", url.host == "share" {
-                    if let pending = SharedURLStore.consumePendingURL() {
-                        pendingSharedURL = pending
-                        showAddClip = true
+                    let pending = SharedURLStore.consumePendingURLs()
+                    if !pending.isEmpty {
+                        pendingSharedURLs = pending
                     }
+                }
+                // Supabase Apple OAuth callback (if using ASWebAuthenticationSession).
+                if url.scheme == "playbook" {
+                    Task { try? await supabase.client.auth.session(from: url) }
                 }
             }
             .onAppear {
-                // Pick up any URL stored before the app was launched
-                if let pending = SharedURLStore.consumePendingURL() {
-                    pendingSharedURL = pending
-                    showAddClip = true
+                let pending = SharedURLStore.consumePendingURLs()
+                if !pending.isEmpty {
+                    pendingSharedURLs = pending
                 }
             }
         }
@@ -37,19 +39,41 @@ struct PlaybookApp: App {
 // MARK: - Root
 
 struct RootView: View {
-    @Binding var pendingSharedURL: URL?
+    @Binding var pendingSharedURLs: [URL]
     @Binding var showAddClip: Bool
     @EnvironmentObject private var supabase: SupabaseService
 
+    private var activeIntakeURL: URL? { pendingSharedURLs.first }
+
     var body: some View {
-        Group {
-            if supabase.session == nil {
-                AuthLandingView()
-            } else {
-                MainTabView(showAddClip: $showAddClip, pendingSharedURL: $pendingSharedURL)
+        ZStack {
+            Group {
+                if supabase.session == nil {
+                    AuthLandingView()
+                } else {
+                    MainTabView(showAddClip: $showAddClip)
+                }
+            }
+
+            // After share + login: full-screen video + categorize — first thing you see.
+            if supabase.session != nil, let url = activeIntakeURL {
+                SharedClipIntakeView(
+                    sourceURL: url,
+                    onDone: { advanceIntake() },
+                    onSkip: { advanceIntake() }
+                )
+                .transition(.opacity)
+                .zIndex(50)
             }
         }
         .animation(.easeInOut(duration: 0.3), value: supabase.session == nil)
+        .animation(.easeInOut(duration: 0.25), value: pendingSharedURLs.count)
+    }
+
+    private func advanceIntake() {
+        if !pendingSharedURLs.isEmpty {
+            pendingSharedURLs.removeFirst()
+        }
     }
 }
 
@@ -57,7 +81,6 @@ struct RootView: View {
 
 struct MainTabView: View {
     @Binding var showAddClip: Bool
-    @Binding var pendingSharedURL: URL?
 
     var body: some View {
         TabView {
@@ -77,9 +100,9 @@ struct MainTabView: View {
                 }
         }
         .tint(Color.pbGreen)
-        .sheet(isPresented: $showAddClip, onDismiss: { pendingSharedURL = nil }) {
-            AddClipView(prefillURL: pendingSharedURL) {
-                pendingSharedURL = nil
+        .sheet(isPresented: $showAddClip) {
+            AddClipView(prefillURL: nil) {
+                showAddClip = false
             }
         }
     }

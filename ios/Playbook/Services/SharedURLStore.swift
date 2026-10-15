@@ -5,16 +5,40 @@ enum SharedURLStore {
         UserDefaults(suiteName: AppConstants.appGroupID)
     }
 
-    // MARK: - Pending share URL
+    // MARK: - Pending share queue
 
-    static func savePendingURL(_ url: URL) {
-        defaults?.set(url.absoluteString, forKey: AppConstants.pendingShareURLKey)
+    static func enqueuePendingURL(_ url: URL) {
+        var queue = pendingQueue()
+        let raw = url.absoluteString
+        if !queue.contains(raw) { queue.append(raw) }
+        defaults?.set(queue, forKey: AppConstants.pendingShareQueueKey)
+        defaults?.set(raw, forKey: AppConstants.pendingShareURLKey)
     }
 
-    static func consumePendingURL() -> URL? {
-        guard let raw = defaults?.string(forKey: AppConstants.pendingShareURLKey) else { return nil }
+    static func savePendingURL(_ url: URL) {
+        enqueuePendingURL(url)
+    }
+
+    /// Drain all pending share URLs (clears the queue).
+    static func consumePendingURLs() -> [URL] {
+        let raw = pendingQueue()
+        defaults?.removeObject(forKey: AppConstants.pendingShareQueueKey)
         defaults?.removeObject(forKey: AppConstants.pendingShareURLKey)
-        return URL(string: raw)
+        return raw.compactMap(URL.init(string:))
+    }
+
+    /// Legacy single-URL consumer.
+    static func consumePendingURL() -> URL? {
+        consumePendingURLs().first
+    }
+
+    private static func pendingQueue() -> [String] {
+        var queue = defaults?.stringArray(forKey: AppConstants.pendingShareQueueKey) ?? []
+        if let legacy = defaults?.string(forKey: AppConstants.pendingShareURLKey),
+           !legacy.isEmpty, !queue.contains(legacy) {
+            queue.insert(legacy, at: 0)
+        }
+        return queue
     }
 
     // MARK: - User JWT (written by main app, read by Share Extension)

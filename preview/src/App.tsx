@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useContext, createContext, useMemo } from "react";
 import IPhoneSimulator from "./IPhoneSimulator";
 import { supabase } from "./lib/supabase";
+import { ingestPlayToAccount } from "./lib/plays";
 
 // ─── Native iOS bridge (StoreKit purchases + Pro entitlement) ─────────────────
 // The Swift app injects window.__pbPro / dispatches "pb-entitlement", and listens
@@ -16,6 +17,8 @@ const NativeBridge = {
   },
   purchase(plan: string) { this.post({ type: "purchase", plan }); },
   restore() { this.post({ type: "restore" }); },
+  signInWithApple() { this.post({ type: "signInWithApple" }); },
+  requestPendingShares() { this.post({ type: "requestPendingShares" }); },
 };
 
 function readIsPro(): boolean {
@@ -422,14 +425,12 @@ function makeCategorizedPlay(url: string, categoryId: string, categoryName?: str
   };
 }
 
-/** A clip shared from the extension that hasn't been categorized yet. It shows
- *  up in the feed with the normal "Save to Playbook" prompt so the user sorts
- *  it in-app, later. */
+/** A clip shared from the extension that hasn't been categorized yet. */
 function makeUncategorizedPlay(url: string): UserPlayItem {
   return {
     id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    categoryId: "",
-    title: "New clip",
+    categoryId: "inbox", // reserved — triggers full-screen intake, not a real category
+    title: "New shared clip",
     platform: detectPlatform(url),
     sourceUrl: url,
     savedAt: null,
@@ -438,6 +439,10 @@ function makeUncategorizedPlay(url: string): UserPlayItem {
     addedAt: new Date(),
     gradient: ["#1a2440", "#0d0d0f"],
   };
+}
+
+function isInboxPlay(p: { categoryId: string; savedAt: string | null }): boolean {
+  return p.categoryId === "inbox" || (p.categoryId === "" && !p.savedAt);
 }
 
 const PlaysCtx = createContext<{ plays: UserPlayItem[]; addPlay: (p: UserPlayItem) => void }>({
@@ -5393,7 +5398,9 @@ function AuthSheet({ title, onEmailPress, onClose, onDone }:
 
         {/* Sign in with Apple */}
         <button
-          onClick={() => { onDone(); }}
+          onClick={() => { /* sheet uses parent AuthScreen handler via custom event */ 
+            window.dispatchEvent(new CustomEvent("pb-request-apple-signin"));
+          }}
           style={{
             width:"100%", display:"flex", alignItems:"center", justifyContent:"center",
             gap:10, background:STEEP.ink, border:"none", borderRadius:999,
@@ -5427,6 +5434,134 @@ function AuthSheet({ title, onEmailPress, onClose, onDone }:
   );
 }
 
+/** Full-screen first screen after sharing: video + categorize into playbook. */
+function SharedClipIntakeOverlay({
+  play,
+  onSaved,
+  onSkip,
+}: {
+  play: UserPlayItem;
+  onSaved: (playId: string, categoryId: string, categoryName: string) => void;
+  onSkip: () => void;
+}) {
+  const [parentId, setParentId] = useState("");
+  const [subId, setSubId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const parents = CATEGORIES.filter(c => c.parentId === null);
+  const subs = parentId ? CATEGORIES.filter(c => c.parentId === parentId) : [];
+  const selectedId = subId || parentId;
+  const canSave = parentId !== "";
+  const embedUrl = officialEmbedUrl(play as FeedPlay);
+  const streamSrc = useTwitterAutoplay(play as FeedPlay, true);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  async function save() {
+    if (!canSave) return;
+    setSaving(true);
+    setErr(null);
+    const catName = CATEGORIES.find(c => c.id === selectedId)?.name || "Playbook";
+    const remote = await ingestPlayToAccount(play.sourceUrl, selectedId, catName);
+    setSaving(false);
+    if (!remote.ok && remote.error !== "Not signed in") {
+      setErr(remote.error || "Couldn't save — try again.");
+      return;
+    }
+    onSaved(play.id, selectedId, catName);
+  }
+
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:200, background:"#000",
+      display:"flex", flexDirection:"column" }}>
+      <div style={{ flex:1, position:"relative", minHeight:0 }}>
+        <PlayMediaBackdrop play={play as FeedPlay} />
+        {streamSrc && (
+          <NativeClipVideo src={streamSrc} isActive={true} paused={false} videoRef={videoRef} />
+        )}
+        {!streamSrc && embedUrl && (
+          <OfficialEmbedPlayer embedUrl={embedUrl} isActive={true} />
+        )}
+        <div style={{ position:"absolute", top:16, left:16, right:16,
+          display:"flex", justifyContent:"space-between", alignItems:"center", zIndex:3 }}>
+          <div style={{ fontSize:13, fontWeight:600, color:"#fff",
+            background:"rgba(0,0,0,0.45)", backdropFilter:"blur(10px)",
+            borderRadius:999, padding:"7px 12px" }}>
+            Shared clip — save to playbook
+          </div>
+          <button onClick={onSkip}
+            style={{ background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.2)",
+              color:"#fff", borderRadius:999, padding:"7px 12px", fontSize:13, cursor:"pointer" }}>
+            Later
+          </button>
+        </div>
+      </div>
+
+      <div style={{
+        background:"linear-gradient(180deg, rgba(0,0,0,0.2), #0d0d0f 30%)",
+        padding:"18px 18px calc(22px + env(safe-area-inset-bottom))",
+      }}>
+        <div style={{ fontSize:20, fontWeight:600, color:"#fff", marginBottom:6,
+          fontFamily:STEEP.serif }}>Where does this go?</div>
+        <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)", marginBottom:14 }}>
+          Pick a play type so it lands in your playbook.
+        </div>
+
+        <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:10 }}>
+          {parents.map(p => (
+            <button key={p.id} onClick={() => { setParentId(p.id); setSubId(""); }}
+              style={{
+                padding:"10px 14px", borderRadius:999, cursor:"pointer",
+                border: parentId === p.id ? "none" : "1px solid rgba(255,255,255,0.12)",
+                background: parentId === p.id ? C.accent : "rgba(255,255,255,0.08)",
+                color: parentId === p.id ? "#000" : "#fff",
+                fontSize:13, fontWeight:600,
+              }}>{p.name}</button>
+          ))}
+        </div>
+        {subs.length > 0 && (
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:14 }}>
+            {subs.map(s => (
+              <button key={s.id} onClick={() => setSubId(s.id)}
+                style={{
+                  padding:"8px 12px", borderRadius:999, cursor:"pointer",
+                  border: subId === s.id ? "none" : "1px solid rgba(255,255,255,0.12)",
+                  background: subId === s.id ? "#fff" : "rgba(255,255,255,0.06)",
+                  color: subId === s.id ? "#000" : "rgba(255,255,255,0.85)",
+                  fontSize:12, fontWeight:600,
+                }}>{s.name}</button>
+            ))}
+          </div>
+        )}
+        {err && <div style={{ color:"#ff9f43", fontSize:12, marginBottom:10 }}>{err}</div>}
+        <button onClick={save} disabled={!canSave || saving}
+          style={{
+            width:"100%", padding:"15px", borderRadius:999, border:"none",
+            background: canSave ? C.accent : "rgba(255,255,255,0.08)",
+            color: canSave ? "#000" : "rgba(255,255,255,0.35)",
+            fontSize:16, fontWeight:700, cursor: canSave ? "pointer" : "default",
+          }}>
+          {saving ? "Saving…" : "Save to Playbook"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+async function signInWithAppleFlow(onDone: () => void, setErr: (m: string | null) => void) {
+  setErr(null);
+  // Prefer native ASAuthorizationAppleID → session tokens via bridge.
+  if (NativeBridge.available) {
+    NativeBridge.signInWithApple();
+    return;
+  }
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "apple",
+    options: { redirectTo: window.location.origin },
+  });
+  if (error) setErr(error.message);
+  else onDone();
+}
+
 function AuthScreen({ onDone }: { onDone:()=>void }) {
   const [phase, setPhase]     = useState<"landing"|"onboarding"|"create"|"email">("landing");
   const [sheet, setSheet]     = useState<"none"|"open">("none");
@@ -5434,6 +5569,30 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
   const [pass, setPass]       = useState("");
   const [loading, setLoading] = useState(false);
   const [authErr, setAuthErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onApple = async (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        access_token?: string; refresh_token?: string; error?: string;
+      } | undefined;
+      if (detail?.error) { setAuthErr(detail.error); return; }
+      if (detail?.access_token && detail?.refresh_token) {
+        const { error } = await supabase.auth.setSession({
+          access_token: detail.access_token,
+          refresh_token: detail.refresh_token,
+        });
+        if (error) setAuthErr(error.message);
+        else onDone();
+      }
+    };
+    const onRequest = () => { void signInWithAppleFlow(onDone, setAuthErr); };
+    window.addEventListener("pb-apple-session", onApple as EventListener);
+    window.addEventListener("pb-request-apple-signin", onRequest);
+    return () => {
+      window.removeEventListener("pb-apple-session", onApple as EventListener);
+      window.removeEventListener("pb-request-apple-signin", onRequest);
+    };
+  }, [onDone]);
 
   async function submitEmail() {
     if (!email || pass.length < 6) return;
@@ -5503,7 +5662,7 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
 
           <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
             {/* Apple */}
-            <button onClick={onDone}
+            <button onClick={() => { void signInWithAppleFlow(onDone, setAuthErr); }}
               style={{ width:"100%", display:"flex", alignItems:"center",
                 justifyContent:"center", gap:10, background:STEEP.ink,
                 border:"none", borderRadius:999, padding:"15px", cursor:"pointer" }}>
@@ -5514,6 +5673,9 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
               <span style={{ fontSize:16, fontWeight:500, color:"#fff",
                 letterSpacing:"-0.009em" }}>Continue with Apple</span>
             </button>
+            {authErr && (
+              <div style={{ fontSize:12, color:"#c0392b", textAlign:"center" }}>{authErr}</div>
+            )}
           </div>
         </div>
       </div>
@@ -5808,36 +5970,57 @@ export default function App() {
   // Merged, stable list = imports (newest first) + seeded FEED.
   const allPlaysList = useMemo(() => [...userPlays, ...FEED], [userPlays]);
 
-  // ── Clips categorized in the Share Extension (from the App Group) ─────────
-  // The native app pushes already-categorized clips via "pb-add-categorized".
-  // We add them to the feed/playbook and confirm so native can drop them.
+  // ── Clips from the Share Extension (App Group → native bridge) ────────────
+  // Bare URLs become inbox plays and open the full-screen categorize intake.
   const ingestedShares = useRef<Set<string>>(new Set());
+  const [intakeQueue, setIntakeQueue] = useState<UserPlayItem[]>([]);
+
   useEffect(() => {
     const ingest = (items: unknown) => {
       if (!Array.isArray(items)) return;
       const done: string[] = [];
+      const fresh: UserPlayItem[] = [];
       (items as { url?: string; categoryId?: string; categoryName?: string }[]).forEach(it => {
         if (!it || typeof it.url !== "string" || ingestedShares.current.has(it.url)) return;
         ingestedShares.current.add(it.url);
-        if (typeof it.categoryId === "string" && it.categoryId) {
-          // Legacy path: already categorized in the extension.
+        if (typeof it.categoryId === "string" && it.categoryId && it.categoryId !== "inbox") {
           addPlay(makeCategorizedPlay(it.url, it.categoryId, it.categoryName));
         } else {
-          // New path: bare URL — show it uncategorized so the user sorts it in-app.
-          addPlay(makeUncategorizedPlay(it.url));
+          const play = makeUncategorizedPlay(it.url);
+          addPlay(play);
+          fresh.push(play);
+          // Best-effort account persist (uncategorized) so it doesn't vanish.
+          void ingestPlayToAccount(it.url, null, "New shared clip");
         }
         done.push(it.url);
       });
+      if (fresh.length) setIntakeQueue(q => [...q, ...fresh]);
       if (done.length) NativeBridge.post({ type: "categorizedIngested", urls: done });
     };
-    // Race-proof: pick up whatever native stashed before this listener mounted,
-    // then keep listening for live shares while the app is open.
     ingest((window as any).__pbPendingCategorized);
     const onCategorized = (e: Event) => ingest((e as CustomEvent).detail?.items);
     window.addEventListener("pb-add-categorized", onCategorized as EventListener);
-    return () => window.removeEventListener("pb-add-categorized", onCategorized as EventListener);
+    // Ask native shell to flush App Group queue into the WebView.
+    NativeBridge.requestPendingShares();
+    const t = window.setTimeout(() => NativeBridge.requestPendingShares(), 800);
+    return () => {
+      window.removeEventListener("pb-add-categorized", onCategorized as EventListener);
+      window.clearTimeout(t);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Also surface any inbox plays already in local storage (survived a prior share).
+  useEffect(() => {
+    if (!authed) return;
+    const pending = userPlays.filter(isInboxPlay);
+    if (pending.length && intakeQueue.length === 0) {
+      setIntakeQueue(pending);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed]);
+
+  const activeIntake = authed ? intakeQueue[0] : null;
 
   // ── Streak state (persisted to localStorage) ──────────────────────────────
   const [streak, setStreak] = useState<StreakState>(loadStreak);
@@ -6075,7 +6258,7 @@ export default function App() {
                     ? <ShareExtPreview navigate={navigate} />
                     : null
                   }
-                  {tabId && (
+                  {tabId && !activeIntake && (
                     <TabBar active={screen.id} onTab={id => navigate({ id } as Screen)} />
                   )}
                 </div>
@@ -6083,6 +6266,21 @@ export default function App() {
           }
         </div>
       </PhoneFrame>
+      {activeIntake && (
+        <SharedClipIntakeOverlay
+          play={activeIntake}
+          onSkip={() => setIntakeQueue(q => q.slice(1))}
+          onSaved={(playId, categoryId, categoryName) => {
+            setUserPlays(prev => prev.map(p =>
+              p.id === playId
+                ? { ...p, categoryId, savedAt: categoryName, title: `${categoryName} clip` }
+                : p
+            ));
+            setIntakeQueue(q => q.slice(1));
+            recordSave();
+          }}
+        />
+      )}
     </IPhoneSimulator>
     {/* Streak milestone celebration modal (shown when 7/30/100/365 hit) */}
     {pendingMilestone && (

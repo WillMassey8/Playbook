@@ -1,4 +1,5 @@
 import SwiftUI
+import AuthenticationServices
 
 struct AuthView: View {
     var showTrialSubtitle: Bool = false
@@ -6,6 +7,7 @@ struct AuthView: View {
 
     @State private var vm = AuthViewModel()
     @FocusState private var focusedField: Field?
+    @State private var currentNonce = ""
 
     enum Field { case email, password }
 
@@ -51,6 +53,25 @@ struct AuthView: View {
                     }
                     .padding(.top, Spacing.xxl)
                     .padding(.bottom, Spacing.xl)
+
+                    SignInWithAppleButton(.signIn) { request in
+                        let hashed = vm.prepareAppleSignIn()
+                        currentNonce = hashed
+                        request.requestedScopes = [.fullName, .email]
+                        request.nonce = hashed
+                    } onCompletion: { result in
+                        switch result {
+                        case .success(let auth):
+                            Task { await vm.handleAppleSignIn(authorization: auth) }
+                        case .failure(let error):
+                            vm.errorMessage = error.localizedDescription
+                        }
+                    }
+                    .signInWithAppleButtonStyle(.white)
+                    .frame(height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+                    .padding(.horizontal, Spacing.md)
+                    .padding(.bottom, Spacing.md)
 
                     // Mode picker
                     HStack(spacing: 0) {

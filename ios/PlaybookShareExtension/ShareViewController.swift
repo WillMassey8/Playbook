@@ -1,21 +1,106 @@
 import UIKit
-import SwiftUI
 import UniformTypeIdentifiers
 
+/// Question-free share: capture URL → show Saved ✓ → dismiss.
+/// Categorization happens later in the main app as a full-screen intake.
 class ShareViewController: UIViewController {
+
+    private let statusLabel = UILabel()
+    private let iconView = UIImageView()
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor(red: 0.04, green: 0.04, blue: 0.06, alpha: 1)
+        buildChrome()
+        setStatus("Saving…", systemImage: "arrow.down.circle", tint: .white)
+
         extractSharedURL { [weak self] url in
             DispatchQueue.main.async {
                 guard let self else { return }
-                if let url {
-                    self.presentCategorizer(for: url)
-                } else {
-                    self.completeRequest()
+                guard let url else {
+                    self.failAndClose("Couldn't save — try again.")
+                    return
                 }
+                self.capture(url)
             }
+        }
+    }
+
+    // MARK: - UI
+
+    private func buildChrome() {
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.contentMode = .scaleAspectFit
+        iconView.tintColor = .white
+
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        statusLabel.textColor = .white
+        statusLabel.font = .systemFont(ofSize: 17, weight: .semibold)
+        statusLabel.textAlignment = .center
+        statusLabel.numberOfLines = 2
+
+        let stack = UIStackView(arrangedSubviews: [iconView, statusLabel])
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = 14
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            iconView.widthAnchor.constraint(equalToConstant: 44),
+            iconView.heightAnchor.constraint(equalToConstant: 44),
+            stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -24),
+        ])
+    }
+
+    private func setStatus(_ text: String, systemImage: String, tint: UIColor) {
+        statusLabel.text = text
+        iconView.image = UIImage(systemName: systemImage)
+        iconView.tintColor = tint
+        statusLabel.textColor = tint
+    }
+
+    // MARK: - Capture
+
+    private func capture(_ url: URL) {
+        // Always stash locally so the main app can pick it up (queue, not single overwrite).
+        SharedURLStore.enqueuePendingURL(url)
+
+        // Best-effort server ingest when the user has a JWT in the App Group.
+        if let jwt = SharedURLStore.loadUserToken() {
+            Task {
+                do {
+                    _ = try await ShareIngestService.ingest(
+                        jwt: jwt,
+                        sourceURL: url.absoluteString,
+                        categoryId: nil
+                    )
+                } catch {
+                    // Local queue still has it — main app will retry.
+                }
+                await MainActor.run { self.succeedAndClose() }
+            }
+        } else {
+            succeedAndClose()
+        }
+    }
+
+    private func succeedAndClose() {
+        setStatus("Saved to Playbook ✓", systemImage: "checkmark.circle.fill",
+                  tint: UIColor(red: 0.18, green: 0.72, blue: 0.42, alpha: 1))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.extensionContext?.completeRequest(returningItems: nil)
+        }
+    }
+
+    private func failAndClose(_ message: String) {
+        setStatus(message, systemImage: "exclamationmark.triangle.fill",
+                  tint: UIColor(red: 1, green: 0.55, blue: 0.2, alpha: 1))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in
+            self?.extensionContext?.completeRequest(returningItems: nil)
         }
     }
 
@@ -29,75 +114,43 @@ class ShareViewController: UIViewController {
 
         let providers = item.attachments ?? []
 
-        // Try typed URL first
+        func finish(_ raw: String?) {
+            guard let raw else { completion(nil); return }
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Prefer first http(s) URL embedded in the text (X/IG often wrap copy).
+            if let match = trimmed.range(of: #"https?://[^\s]+"#, options: .regularExpression) {
+                var candidate = String(trimmed[match])
+                while candidate.last?.isPunctuation == true { candidate.removeLast() }
+                completion(URL(string: candidate))
+                return
+            }
+            completion(URL(string: trimmed))
+        }
+
         for provider in providers {
             if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
                 provider.loadItem(forTypeIdentifier: UTType.url.identifier) { value, _ in
-                    completion(value as? URL)
+                    if let url = value as? URL {
+                        completion(url)
+                    } else if let str = value as? String {
+                        finish(str)
+                    } else {
+                        completion(nil)
+                    }
                 }
                 return
             }
         }
 
-        // Fall back to plain text (Twitter/X share sheet sends the URL as text)
         for provider in providers {
             if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
                 provider.loadItem(forTypeIdentifier: UTType.plainText.identifier) { value, _ in
-                    guard
-                        let text = value as? String,
-                        let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
-                        url.scheme?.hasPrefix("http") == true
-                    else {
-                        completion(nil)
-                        return
-                    }
-                    completion(url)
+                    finish(value as? String)
                 }
                 return
             }
         }
 
         completion(nil)
-    }
-
-    // MARK: - Present SwiftUI categorizer
-
-    private func presentCategorizer(for url: URL) {
-        let swiftUIView = CategorizeShareView(
-            sharedURL: url,
-            onComplete: { [weak self] in self?.completeRequest() },
-            onCancel:   { [weak self] in self?.cancelRequest()   },
-            openMainApp: { [weak self] in
-                guard let url = URL(string: "playbook://share") else { return }
-                self?.extensionContext?.open(url, completionHandler: nil)
-            }
-        )
-
-        let host = UIHostingController(rootView: swiftUIView)
-        host.view.backgroundColor = UIColor(red: 0.04, green: 0.04, blue: 0.06, alpha: 1)
-
-        addChild(host)
-        view.addSubview(host.view)
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
-        host.didMove(toParent: self)
-    }
-
-    // MARK: - Extension lifecycle
-
-    private func completeRequest() {
-        extensionContext?.completeRequest(returningItems: nil)
-    }
-
-    private func cancelRequest() {
-        extensionContext?.cancelRequest(withError: NSError(
-            domain: "com.playbook.shareextension",
-            code: NSUserCancelledError
-        ))
     }
 }
