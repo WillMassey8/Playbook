@@ -28,9 +28,9 @@
 - Share intake, Apple bridge contract, delete-account code, openURL, embed navigation  
 - Vercel CI on PR
 
-## Status snapshot (2026-10-15 16:33 UTC)
+## Status snapshot (2026-10-15 17:15 UTC)
 
-- Production: still `index-NwAGEV6c.js`, privacy/terms/support **404** → Promote required
-- Preview: green (latest web canonicalize live)
+- Production: still `index-NwAGEV6c.js`, privacy/terms/support **404** → **Promote required**
+- Preview: green
 - PR #5 CI: green
-- Redeploy `ingest-shared-url` after merge/Promote (category preserve + URL canonicalize)
+- Agent code path: complete — remaining work is dashboard-only (Promote, Supabase deploy, WebViewShell/TestFlight, ASC)
