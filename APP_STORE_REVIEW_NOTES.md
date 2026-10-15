@@ -29,3 +29,4 @@ Password: _(paste here)_
 
 - Privacy: https://playbook-pink.vercel.app/privacy.html
 - Terms: https://playbook-pink.vercel.app/terms.html
+- Support: https://playbook-pink.vercel.app/support.html

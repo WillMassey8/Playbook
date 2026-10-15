@@ -46,6 +46,7 @@ Share from X → **Saved to Playbook ✓** → reopen → categorize → persist
 
 - Privacy: https://playbook-pink.vercel.app/privacy.html
 - Terms: https://playbook-pink.vercel.app/terms.html
+- Support: https://playbook-pink.vercel.app/support.html
 - Review notes: `APP_STORE_REVIEW_NOTES.md`
 
 **PR:** https://github.com/WillMassey8/Playbook/pull/5
