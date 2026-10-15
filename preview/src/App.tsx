@@ -2,24 +2,12 @@ import { useState, useRef, useEffect, useContext, createContext, useMemo } from 
 import IPhoneSimulator from "./IPhoneSimulator";
 import { supabase } from "./lib/supabase";
 import { ingestPlayToAccount } from "./lib/plays";
-
-// ─── Native iOS bridge (StoreKit purchases + Pro entitlement) ─────────────────
-// The Swift app injects window.__pbPro / dispatches "pb-entitlement", and listens
-// for messages posted to the "playbook" handler. In a browser (no bridge) these
-// no-op and the paywall falls back to just proceeding.
-const NativeBridge = {
-  get available(): boolean {
-    return typeof window !== "undefined" &&
-      !!(window as any).webkit?.messageHandlers?.playbook;
-  },
-  post(msg: Record<string, unknown>) {
-    (window as any).webkit?.messageHandlers?.playbook?.postMessage(msg);
-  },
-  purchase(plan: string) { this.post({ type: "purchase", plan }); },
-  restore() { this.post({ type: "restore" }); },
-  signInWithApple() { this.post({ type: "signInWithApple" }); },
-  requestPendingShares() { this.post({ type: "requestPendingShares" }); },
-};
+import {
+  NativeBridge,
+  applyAppleSession,
+  type AppleSessionDetail,
+  type PendingShareItem,
+} from "./lib/nativeBridge";
 
 function readIsPro(): boolean {
   if (typeof window === "undefined") return false;
@@ -5461,7 +5449,9 @@ function SharedClipIntakeOverlay({
     setSaving(true);
     setErr(null);
     const catName = CATEGORIES.find(c => c.id === selectedId)?.name || "Playbook";
-    const remote = await ingestPlayToAccount(play.sourceUrl, selectedId, catName);
+    // Preview category ids are local strings; only send real UUIDs to Supabase.
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedId);
+    const remote = await ingestPlayToAccount(play.sourceUrl, isUuid ? selectedId : null, catName);
     setSaving(false);
     if (!remote.ok && remote.error !== "Not signed in") {
       setErr(remote.error || "Couldn't save — try again.");
@@ -5549,11 +5539,12 @@ function SharedClipIntakeOverlay({
 
 async function signInWithAppleFlow(onDone: () => void, setErr: (m: string | null) => void) {
   setErr(null);
-  // Prefer native ASAuthorizationAppleID → session tokens via bridge.
+  // WebView shell: native runs ASAuthorizationAppleID → pb-apple-session → signInWithIdToken.
   if (NativeBridge.available) {
     NativeBridge.signInWithApple();
     return;
   }
+  // Browser fallback (dev only) — needs Apple provider enabled in Supabase.
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "apple",
     options: { redirectTo: window.location.origin },
@@ -5572,18 +5563,14 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
 
   useEffect(() => {
     const onApple = async (e: Event) => {
-      const detail = (e as CustomEvent).detail as {
-        access_token?: string; refresh_token?: string; error?: string;
-      } | undefined;
-      if (detail?.error) { setAuthErr(detail.error); return; }
-      if (detail?.access_token && detail?.refresh_token) {
-        const { error } = await supabase.auth.setSession({
-          access_token: detail.access_token,
-          refresh_token: detail.refresh_token,
-        });
-        if (error) setAuthErr(error.message);
-        else onDone();
+      const detail = (e as CustomEvent).detail as AppleSessionDetail | undefined;
+      if (!detail) {
+        setAuthErr("Apple Sign In returned nothing from native.");
+        return;
       }
+      const result = await applyAppleSession(detail);
+      if (!result.ok) setAuthErr(result.error);
+      else onDone();
     };
     const onRequest = () => { void signInWithAppleFlow(onDone, setAuthErr); };
     window.addEventListener("pb-apple-session", onApple as EventListener);
@@ -5970,8 +5957,9 @@ export default function App() {
   // Merged, stable list = imports (newest first) + seeded FEED.
   const allPlaysList = useMemo(() => [...userPlays, ...FEED], [userPlays]);
 
-  // ── Clips from the Share Extension (App Group → native bridge) ────────────
-  // Bare URLs become inbox plays and open the full-screen categorize intake.
+  // ── Clips from Share Extension via native bridge contract ─────────────────
+  // Native → web: pb-add-categorized + window.__pbPendingCategorized
+  // Bare URLs (no categoryId) → inbox → full-screen SharedClipIntakeOverlay.
   const ingestedShares = useRef<Set<string>>(new Set());
   const [intakeQueue, setIntakeQueue] = useState<UserPlayItem[]>([]);
 
@@ -5980,7 +5968,7 @@ export default function App() {
       if (!Array.isArray(items)) return;
       const done: string[] = [];
       const fresh: UserPlayItem[] = [];
-      (items as { url?: string; categoryId?: string; categoryName?: string }[]).forEach(it => {
+      (items as PendingShareItem[]).forEach(it => {
         if (!it || typeof it.url !== "string" || ingestedShares.current.has(it.url)) return;
         ingestedShares.current.add(it.url);
         if (typeof it.categoryId === "string" && it.categoryId && it.categoryId !== "inbox") {
@@ -5989,18 +5977,17 @@ export default function App() {
           const play = makeUncategorizedPlay(it.url);
           addPlay(play);
           fresh.push(play);
-          // Best-effort account persist (uncategorized) so it doesn't vanish.
           void ingestPlayToAccount(it.url, null, "New shared clip");
         }
         done.push(it.url);
       });
       if (fresh.length) setIntakeQueue(q => [...q, ...fresh]);
-      if (done.length) NativeBridge.post({ type: "categorizedIngested", urls: done });
+      if (done.length) NativeBridge.categorizedIngested(done);
     };
-    ingest((window as any).__pbPendingCategorized);
-    const onCategorized = (e: Event) => ingest((e as CustomEvent).detail?.items);
+    ingest(window.__pbPendingCategorized);
+    const onCategorized = (e: Event) =>
+      ingest((e as CustomEvent<{ items?: PendingShareItem[] }>).detail?.items);
     window.addEventListener("pb-add-categorized", onCategorized as EventListener);
-    // Ask native shell to flush App Group queue into the WebView.
     NativeBridge.requestPendingShares();
     const t = window.setTimeout(() => NativeBridge.requestPendingShares(), 800);
     return () => {
@@ -6017,6 +6004,21 @@ export default function App() {
     if (pending.length && intakeQueue.length === 0) {
       setIntakeQueue(pending);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed]);
+
+  // Dev/QA: ?shareTest=1 simulates a shared X clip → full-screen intake.
+  useEffect(() => {
+    if (!authed) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("shareTest") !== "1") return;
+    const url = params.get("url")
+      || "https://x.com/CoachDanCasey/status/1980441997854011558";
+    if (ingestedShares.current.has(url)) return;
+    ingestedShares.current.add(url);
+    const play = makeUncategorizedPlay(url);
+    addPlay(play);
+    setIntakeQueue(q => [play, ...q]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed]);
 
