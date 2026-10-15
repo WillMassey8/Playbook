@@ -54,6 +54,17 @@ final class SupabaseService: ObservableObject {
         try await client.auth.signOut()
     }
 
+    /// Permanently delete the signed-in user (App Store Guideline 5.1.1(v)).
+    func deleteAccount() async throws {
+        struct EmptyBody: Encodable {}
+        struct DeleteResponse: Decodable { let ok: Bool? }
+        _ = try await client.functions.invoke(
+            "delete-account",
+            options: FunctionInvokeOptions(body: EmptyBody())
+        ) as DeleteResponse
+        try? await client.auth.signOut()
+    }
+
     /// Sign in with Apple via Supabase Auth (id token + nonce).
     func signInWithApple(idToken: String, nonce: String) async throws {
         isLoading = true

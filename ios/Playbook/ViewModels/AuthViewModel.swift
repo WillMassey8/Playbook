@@ -44,6 +44,15 @@ final class AuthViewModel: NSObject {
         try? await service.signOut()
     }
 
+    @MainActor
+    func deleteAccount() async {
+        do {
+            try await service.deleteAccount()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     // MARK: - Sign in with Apple
 
     func prepareAppleSignIn() -> String {

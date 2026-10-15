@@ -3,11 +3,22 @@ import IPhoneSimulator from "./IPhoneSimulator";
 import { supabase } from "./lib/supabase";
 import { ingestPlayToAccount } from "./lib/plays";
 import {
+  deleteAccount,
+  signOutAccount,
+  syncAuthTokenToNative,
+} from "./lib/account";
+import {
   NativeBridge,
   applyAppleSession,
   type AppleSessionDetail,
   type PendingShareItem,
 } from "./lib/nativeBridge";
+
+/** Hosted on the same Vercel origin the WebView loads — required for App Store Connect. */
+const LEGAL_URLS = {
+  privacy: "/privacy.html",
+  terms: "/terms.html",
+};
 
 function readIsPro(): boolean {
   if (typeof window === "undefined") return false;
@@ -3313,7 +3324,10 @@ function ImportLinkSheet({ onClose, onImported, initialUrl, mandatory }:
   );
 }
 
-function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
+function ProfileScreen({ onSignOut, onDeleteAccount }: {
+  onSignOut:()=>void;
+  onDeleteAccount:()=>Promise<void> | void;
+}) {
   const { isDark, toggleTheme } = useTheme();
   const { addPlay } = usePlays();
   const [importOpen, setImportOpen] = useState(false);
@@ -3322,6 +3336,7 @@ function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
   const [plan]             = useState<PlanTier>("individual"); // mock — swap to "team" to test
   const [signOutConfirm, setSignOutConfirm]   = useState(false);
   const [deleteStep, setDeleteStep]           = useState<0|1|2>(0); // 0=hidden 1=confirm 2=typed
+  const [deleting, setDeleting]               = useState(false);
 
   const clipsUsed = 47;
   const clipsMax  = plan === "individual" ? 75 : 2000;
@@ -3549,7 +3564,7 @@ function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
 
           {/* ── Legal ─────────────────────────────────────────────────────── */}
           <SettingsGroup label="Legal">
-            <SettingsRow onPress={() => window.open("https://apple.com/legal/privacy", "_blank")}
+            <SettingsRow onPress={() => window.open(LEGAL_URLS.privacy, "_blank")}
               iconBg="rgba(255,255,255,0.08)" label="Privacy Policy"
               iconEl={<svg width="13" height="14" viewBox="0 0 13 14" fill="none">
                 <path d="M6.5 1L1 3.5v4C1 10.5 3.5 13 6.5 13S12 10.5 12 7.5v-4L6.5 1z"
@@ -3558,7 +3573,7 @@ function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
                   stroke={T.textSec} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>}
             />
-            <SettingsRow onPress={() => window.open("https://apple.com/legal/internet-services/itunes/us/terms.html", "_blank")}
+            <SettingsRow onPress={() => window.open(LEGAL_URLS.terms, "_blank")}
               iconBg="rgba(255,255,255,0.08)" label="Terms of Service" last
               iconEl={<svg width="13" height="14" viewBox="0 0 13 14" fill="none">
                 <rect x="2" y="1" width="9" height="12" rx="1.5"
@@ -3698,7 +3713,19 @@ function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
                   Type <span style={{ color:C.red, fontWeight:600 }}>DELETE</span> to confirm
                 </div>
               </div>
-              <DeleteConfirmInput onConfirmed={onSignOut} onCancel={() => setDeleteStep(0)} />
+              <DeleteConfirmInput
+                busy={deleting}
+                onConfirmed={async () => {
+                  setDeleting(true);
+                  try {
+                    await onDeleteAccount();
+                  } finally {
+                    setDeleting(false);
+                    setDeleteStep(0);
+                  }
+                }}
+                onCancel={() => setDeleteStep(0)}
+              />
             </div>
           )}
 
@@ -3717,12 +3744,12 @@ function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
 }
 
 // Separate component so it has its own state ─────────────────────────────────
-function DeleteConfirmInput({ onConfirmed, onCancel }:
-  { onConfirmed:()=>void; onCancel:()=>void }) {
+function DeleteConfirmInput({ onConfirmed, onCancel, busy }:
+  { onConfirmed:()=>void | Promise<void>; onCancel:()=>void; busy?: boolean }) {
   const { isDark } = useTheme();
   const T = th(isDark);
   const [val, setVal] = useState("");
-  const ready = val.trim().toUpperCase() === "DELETE";
+  const ready = val.trim().toUpperCase() === "DELETE" && !busy;
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
       <input
@@ -3730,19 +3757,20 @@ function DeleteConfirmInput({ onConfirmed, onCancel }:
         onChange={e => setVal(e.target.value)}
         placeholder="Type DELETE"
         autoCapitalize="none"
+        disabled={busy}
         style={{ background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
           border:`1px solid ${ready ? "rgba(255,77,77,0.5)" : T.glassBT}`,
           borderRadius:10, padding:"10px 14px", color:T.text,
           fontSize:14, outline:"none", textAlign:"center",
           letterSpacing:"0.06em" }}
       />
-      <button onClick={onConfirmed} disabled={!ready}
+      <button onClick={() => { void onConfirmed(); }} disabled={!ready}
         style={{ background: ready ? C.red : "rgba(255,77,77,0.2)",
           border:"none", borderRadius:10, padding:"11px",
           cursor: ready ? "pointer" : "default",
           color: ready ? "#fff" : "rgba(255,255,255,0.3)",
           fontSize:14, fontWeight:600, transition:"all .2s" }}>
-        Permanently Delete Account
+        {busy ? "Deleting…" : "Permanently Delete Account"}
       </button>
       <PressRow onClick={onCancel}>
         <div style={{ textAlign:"center", padding:"8px" }}>
@@ -5264,6 +5292,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
               </button>
               <span style={{ fontSize:11, color:STEEP.dove }}>·</span>
               <button type="button"
+                onClick={() => window.open(LEGAL_URLS.terms, "_blank")}
                 style={{ background:"none", border:"none", cursor:"pointer",
                   fontSize:11, color:STEEP.graphite, padding:6,
                   fontFamily:STEEP.sans, letterSpacing:"-0.005em" }}>
@@ -5271,6 +5300,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
               </button>
               <span style={{ fontSize:11, color:STEEP.dove }}>·</span>
               <button type="button"
+                onClick={() => window.open(LEGAL_URLS.privacy, "_blank")}
                 style={{ background:"none", border:"none", cursor:"pointer",
                   fontSize:11, color:STEEP.graphite, padding:6,
                   fontFamily:STEEP.sans, letterSpacing:"-0.005em" }}>
@@ -5408,11 +5438,11 @@ function AuthSheet({ title, onEmailPress, onClose, onDone }:
         <div style={{ textAlign:"center", fontSize:11,
           color:STEEP.dove, lineHeight:1.6, letterSpacing:"-0.009em" }}>
           By continuing you agree to Playbook's{" "}
-          <span onClick={() => window.open("https://apple.com/legal/internet-services/itunes/us/terms.html", "_blank")}
+          <span onClick={() => window.open(LEGAL_URLS.terms, "_blank")}
             style={{ color:STEEP.graphite, textDecoration:"underline", cursor:"pointer" }}>
             Terms of Service
           </span>{" "}and{" "}
-          <span onClick={() => window.open("https://apple.com/legal/privacy", "_blank")}
+          <span onClick={() => window.open(LEGAL_URLS.privacy, "_blank")}
             style={{ color:STEEP.graphite, textDecoration:"underline", cursor:"pointer" }}>
             Privacy Policy
           </span>
@@ -5924,11 +5954,16 @@ export default function App() {
 
   // Real Supabase session gates the app. onAuthStateChange flips `authed`
   // on sign-in / sign-out and restores a persisted session on launch.
+  // Also sync JWT → native App Group for Share Extension best-effort ingest.
   useEffect(() => {
     if (skipAuth) return;
-    supabase.auth.getSession().then(({ data }) => setAuthed(!!data.session));
+    supabase.auth.getSession().then(({ data }) => {
+      setAuthed(!!data.session);
+      void syncAuthTokenToNative();
+    });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthed(!!session);
+      NativeBridge.syncAuthToken(session?.access_token ?? null);
     });
     return () => sub.subscription.unsubscribe();
   }, [skipAuth]);
@@ -6255,7 +6290,22 @@ export default function App() {
                     : screen.id === "liked"
                     ? <LikedScreen navigate={navigate} />
                     : screen.id === "profile"
-                    ? <ProfileScreen onSignOut={() => setAuthed(false)} />
+                    ? <ProfileScreen
+                        onSignOut={async () => {
+                          await signOutAccount();
+                          setUserPlays([]);
+                          setAuthed(false);
+                        }}
+                        onDeleteAccount={async () => {
+                          const result = await deleteAccount();
+                          if (!result.ok) {
+                            window.alert(result.error ?? "Could not delete account. Try again.");
+                            return;
+                          }
+                          setUserPlays([]);
+                          setAuthed(false);
+                        }}
+                      />
                     : screen.id === "share-ext"
                     ? <ShareExtPreview navigate={navigate} />
                     : null

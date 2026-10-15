@@ -5,6 +5,8 @@
  * Web → native  (window.webkit.messageHandlers.playbook.postMessage)
  *   { type: "signInWithApple" }
  *   { type: "requestPendingShares" }
+ *   { type: "syncAuthToken", token: string | null }
+ *     Write/clear JWT in App Group so the Share Extension can best-effort ingest.
  *   { type: "purchase", plan }
  *   { type: "restore" }
  *   { type: "categorizedIngested", urls: string[] }
@@ -22,6 +24,8 @@
  *
  *   window.__pbPendingCategorized
  *     Same shape as detail.items — race-proof stash before the listener mounts.
+ *
+ * Full shell reference: /NATIVE_BRIDGE.md
  */
 
 export type PendingShareItem = {
@@ -66,6 +70,10 @@ export const NativeBridge = {
   requestPendingShares() {
     this.post({ type: "requestPendingShares" });
   },
+  /** Persist (or clear) the Supabase access token in the App Group for Share Extension. */
+  syncAuthToken(token: string | null) {
+    this.post({ type: "syncAuthToken", token });
+  },
   categorizedIngested(urls: string[]) {
     this.post({ type: "categorizedIngested", urls });
   },
@@ -90,6 +98,8 @@ export async function applyAppleSession(
   }
 
   const { supabase } = await import("./supabase");
+  // Dynamic import keeps this module usable from unit tests without a window;
+  // App.tsx also imports supabase statically (single chunk in production).
   const { error } = await supabase.auth.signInWithIdToken({
     provider: "apple",
     token,

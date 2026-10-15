@@ -168,7 +168,7 @@ struct ProfileView: View {
             Button("Delete Account", role: .destructive) {
                 guard deleteConfirmText == "DELETE" else { return }
                 Task {
-                    await vm.signOut()
+                    await vm.deleteAccount()
                     UserPreferences.hasCompletedOnboarding = false
                     UserPreferences.planTier = .free
                 }

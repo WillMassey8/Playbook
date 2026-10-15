@@ -61,8 +61,8 @@ enum UserPreferences {
 }
 
 enum AppURLs {
-    static let privacyPolicy = URL(string: "https://apple.com/legal/privacy")!
-    static let termsOfService = URL(string: "https://apple.com/legal/internet-services/itunes/us/terms.html")!
+    static let privacyPolicy = URL(string: "https://playbook-pink.vercel.app/privacy.html")!
+    static let termsOfService = URL(string: "https://playbook-pink.vercel.app/terms.html")!
     static let feedback = URL(string: "mailto:support@playbook.app?subject=Playbook%20Feedback")!
     static let rateApp = URL(string: "https://apps.apple.com/app/id0000000000?action=write-review")!
 }
