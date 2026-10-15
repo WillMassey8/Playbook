@@ -16,6 +16,16 @@ and https://playbook-pink.vercel.app/privacy.html loads.
 
 As of overnight check: production is still on stale `index-NwAGEV6c.js` and privacy/terms/support are **404 until Promote**.
 
+
+## 1b. Optional: TestFlight before Promote
+
+If you need phone testing before Production Promote, temporarily point the
+WebView `startURL` at the Preview deploy:
+
+`https://playbook-git-cursor-share-intake-a-c09719-will-masseys-projects.vercel.app`
+
+Then switch back to `https://playbook-pink.vercel.app` after Promote.
+
 ## 2. Supabase functions
 
 ```bash
@@ -51,6 +61,7 @@ Share from X → **Saved to Playbook ✓** → reopen → categorize → persist
 - Support: https://playbook-pink.vercel.app/support.html
 - Review notes: `APP_STORE_REVIEW_NOTES.md`
 - Age rating: `APP_STORE_AGE_RATING.md`
+- Screenshots: `APP_STORE_SCREENSHOTS.md`
 - Listing copy: `APP_STORE_LISTING.md`
 
 **PR:** https://github.com/WillMassey8/Playbook/pull/5
