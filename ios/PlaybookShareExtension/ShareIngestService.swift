@@ -86,7 +86,13 @@ enum ShareIngestService {
             throw IngestError.networkError("Invalid function URL")
         }
 
-        var body: [String: Any] = ["source_url": sourceURL]
+        let normalized: String
+        if let u = URL(string: sourceURL) {
+            normalized = SharedURLStore.canonicalizeURL(u).absoluteString
+        } else {
+            normalized = sourceURL
+        }
+        var body: [String: Any] = ["source_url": normalized]
         if let cid = categoryId { body["category_id"] = cid }
         if let name = categoryName { body["category_name"] = name }
         if let t = title       { body["title"] = t }

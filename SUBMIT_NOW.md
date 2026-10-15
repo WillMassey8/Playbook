@@ -28,9 +28,9 @@
 - Share intake, Apple bridge contract, delete-account code, openURL, embed navigation  
 - Vercel CI on PR
 
-## Status snapshot (2026-10-15 15:01 UTC)
+## Status snapshot (2026-10-15 16:33 UTC)
 
 - Production: still `index-NwAGEV6c.js`, privacy/terms/support **404** → Promote required
-- Preview: green
+- Preview: green (latest web canonicalize live)
 - PR #5 CI: green
-- **Must redeploy** `ingest-shared-url` (category preserve + URL canonicalize)
+- Redeploy `ingest-shared-url` after merge/Promote (category preserve + URL canonicalize)

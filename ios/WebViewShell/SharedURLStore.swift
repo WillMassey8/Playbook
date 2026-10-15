@@ -16,6 +16,7 @@ enum SharedURLStore {
     }
 
     static func enqueuePendingURL(_ url: URL) {
+        let url = canonicalizeURL(url)
         var queue = loadPendingQueue()
         let raw = url.absoluteString
         if !queue.contains(raw) { queue.append(raw) }
@@ -69,4 +70,32 @@ enum SharedURLStore {
     static func loadUserToken() -> String? {
         defaults?.string(forKey: WebShellAppGroup.pendingUserTokenKey)
     }
+
+    /// Collapse twitter/x hosts and strip common share-sheet tracking params.
+    static func canonicalizeURL(_ url: URL) -> URL {
+        guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        comps.fragment = nil
+        let drop: Set<String> = ["s", "t", "ref_src", "ref_url", "fbclid", "igshid"]
+        comps.queryItems = comps.queryItems?.filter { item in
+            let name = item.name.lowercased()
+            if name.hasPrefix("utm_") { return false }
+            if drop.contains(name) { return false }
+            return true
+        }
+        if let host = comps.host?.lowercased().replacingOccurrences(of: "www.", with: "", options: [.anchored]) {
+            let mapped: String
+            switch host {
+            case "twitter.com", "mobile.twitter.com", "mobile.x.com":
+                mapped = "x.com"
+            default:
+                mapped = host
+            }
+            comps.host = mapped
+        }
+        var path = comps.path
+        while path.count > 1 && path.hasSuffix("/") { path.removeLast() }
+        comps.path = path
+        return comps.url ?? url
+    }
+
 }
