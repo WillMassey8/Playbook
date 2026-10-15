@@ -11,3 +11,13 @@ Copy these files into the Desktop / Xcode WebView app that loads
 See also `/NATIVE_BRIDGE.md`.
 
 Also copy `Playbook.entitlements.sample` → your target entitlements (Sign in with Apple + App Group).
+
+## Embed playback
+
+`PlaybookWebViewController` allows iframe loads for X / TikTok / Instagram / Facebook
+CDN hosts and opens unexpected top-level navigations in Safari.
+
+## Embed playback
+
+`PlaybookWebViewController` allows iframe loads for X / TikTok / Instagram / Facebook
+CDN hosts and opens unexpected top-level navigations in Safari.
