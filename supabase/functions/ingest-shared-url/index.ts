@@ -300,30 +300,40 @@ Deno.serve(async (req) => {
       body.category_name,
     );
 
-    const playFields = {
-      category_id: resolvedCategoryId,
-      source_platform: platform,
-      title: body.title ?? metadata.title ?? null,
-      thumbnail_url: metadata.thumbnailUrl ?? null,
-      embed_url: metadata.embedUrl ?? null,
-      video_storage_path: null,
-      status: "ready" as const,
-      error_message: null,
-    };
-
-    // Idempotent: re-sharing the same URL updates metadata/category instead of duplicating.
+    // Idempotent: re-sharing the same URL updates metadata instead of duplicating.
+    // Never wipe an existing category/title when the caller omits them (Share Extension
+    // best-effort ingest often sends null category after the user already categorized).
     const { data: existing } = await admin
       .from("plays")
-      .select("id")
+      .select("id, category_id, title")
       .eq("user_id", userId)
       .eq("source_url", normalizedUrl)
       .maybeSingle();
 
+    const baseFields: Record<string, unknown> = {
+      source_platform: platform,
+      thumbnail_url: metadata.thumbnailUrl ?? null,
+      embed_url: metadata.embedUrl ?? null,
+      video_storage_path: null,
+      status: "ready",
+      error_message: null,
+    };
+
     let play;
     if (existing?.id) {
+      const updateFields: Record<string, unknown> = { ...baseFields };
+      if (resolvedCategoryId) {
+        updateFields.category_id = resolvedCategoryId;
+      }
+      // Prefer explicit title from caller; otherwise keep existing; else oEmbed.
+      if (body.title) {
+        updateFields.title = body.title;
+      } else if (!existing.title && metadata.title) {
+        updateFields.title = metadata.title;
+      }
       const { data: updated, error: updateError } = await admin
         .from("plays")
-        .update(playFields)
+        .update(updateFields)
         .eq("id", existing.id)
         .select()
         .single();
@@ -337,7 +347,9 @@ Deno.serve(async (req) => {
         .insert({
           user_id: userId,
           source_url: normalizedUrl,
-          ...playFields,
+          category_id: resolvedCategoryId,
+          title: body.title ?? metadata.title ?? null,
+          ...baseFields,
         })
         .select()
         .single();
