@@ -82,7 +82,7 @@ struct CategorizeShareView: View {
     private var header: some View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Save to Playbook AI")
+                Text("Save to Playbook")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.white)
                 Label(platformLabel, systemImage: "link")

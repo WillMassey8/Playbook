@@ -34,7 +34,7 @@ enum ShareIngestService {
 
         var errorDescription: String? {
             switch self {
-            case .notLoggedIn:         return "You must open Playbook AI and sign in first."
+            case .notLoggedIn:         return "You must open Playbook and sign in first."
             case .networkError(let m): return m
             case .serverError(let c, let m): return "Server error \(c): \(m)"
             }
@@ -79,7 +79,8 @@ enum ShareIngestService {
         jwt: String,
         sourceURL: String,
         categoryId: String?,
-        title: String? = nil
+        title: String? = nil,
+        categoryName: String? = nil
     ) async throws -> IngestResult {
         guard let url = URL(string: "\(supabaseURL)/functions/v1/ingest-shared-url") else {
             throw IngestError.networkError("Invalid function URL")
@@ -87,6 +88,7 @@ enum ShareIngestService {
 
         var body: [String: Any] = ["source_url": sourceURL]
         if let cid = categoryId { body["category_id"] = cid }
+        if let name = categoryName { body["category_name"] = name }
         if let t = title       { body["title"] = t }
 
         var req = URLRequest(url: url)

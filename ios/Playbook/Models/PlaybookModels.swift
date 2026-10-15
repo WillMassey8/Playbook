@@ -75,11 +75,20 @@ struct IngestPlayRequest: Encodable, Sendable {
     let sourceUrl: String
     let categoryId: UUID?
     let title: String?
+    let categoryName: String?
 
     enum CodingKeys: String, CodingKey {
         case sourceUrl = "source_url"
         case categoryId = "category_id"
         case title
+        case categoryName = "category_name"
+    }
+
+    init(sourceUrl: String, categoryId: UUID?, title: String?, categoryName: String? = nil) {
+        self.sourceUrl = sourceUrl
+        self.categoryId = categoryId
+        self.title = title
+        self.categoryName = categoryName
     }
 }
 

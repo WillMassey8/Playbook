@@ -41,7 +41,7 @@ struct AuthLandingView: View {
                         .font(.system(size: 52, weight: .semibold))
                         .foregroundStyle(Color.pbGreen)
 
-                    Text("Playbook AI")
+                    Text("Playbook")
                         .font(.system(size: 40, weight: .regular, design: .serif))
                         .foregroundStyle(.white)
 

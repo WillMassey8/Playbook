@@ -1150,7 +1150,7 @@ function ClipShareSheet({ play, onClose }: { play: typeof FEED[0]; onClose: () =
               overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
               {play.title}
             </div>
-            <div style={{ fontSize:12, color: T.textFaint }}>Playbook AI</div>
+            <div style={{ fontSize:12, color: T.textFaint }}>Playbook</div>
           </div>
         </div>
 
@@ -2520,7 +2520,7 @@ function ClipPlayerScreen({ playId, from, navigate }:
 }
 
 // ─── SHARE EXTENSION PREVIEW ──────────────────────────────────────────────────
-// Shows exactly what a coach sees when they tap Share → Playbook AI on iOS
+// Shows exactly what a coach sees when they tap Share → Playbook on iOS
 
 const SHARE_URL = "https://x.com/CoachDanCasey/status/1980441997854011558";
 
@@ -2624,7 +2624,7 @@ function ShareExtPreview({ navigate }: { navigate:(s:Screen)=>void }) {
           <div>
             <div style={{ fontFamily: STEEP.serif, fontSize:18, fontWeight:500,
               color: T.text, letterSpacing:"-0.01em", marginBottom:4 }}>
-              Save to Playbook AI
+              Save to Playbook
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:5 }}>
               <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
@@ -5783,7 +5783,7 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
         background:`radial-gradient(circle, ${STEEP.apricotWash} 0%, transparent 70%)`,
         opacity:0.8, pointerEvents:"none" }} />
 
-      {/* Center: Playbook AI + tagline */}
+      {/* Center: Playbook + tagline */}
       <div style={{ flex:1, display:"flex", flexDirection:"column",
         alignItems:"center", justifyContent:"center", textAlign:"center",
         padding:"0 28px" }}>
@@ -5792,7 +5792,7 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
           fontFamily:STEEP.serif,
           letterSpacing:"-0.66px", lineHeight:1.1,
           marginBottom:16 }}>
-          Playbook AI
+          Playbook
         </div>
 
         <div style={{ fontSize:16, color:STEEP.ash, lineHeight:1.5,
