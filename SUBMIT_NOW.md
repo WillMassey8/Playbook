@@ -28,7 +28,7 @@
 - Share intake, Apple bridge contract, delete-account code, openURL, embed navigation  
 - Vercel CI on PR
 
-## Status snapshot (2026-10-15 13:31 UTC)
+## Status snapshot (2026-10-15 13:32 UTC)
 
 - Production: still `index-NwAGEV6c.js`, privacy/terms/support **404** → Promote required
 - Preview: green (privacy/terms/support 200)
