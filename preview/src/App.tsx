@@ -18,6 +18,7 @@ import {
 const LEGAL_URLS = {
   privacy: "/privacy.html",
   terms: "/terms.html",
+  support: "/support.html",
 };
 
 function readIsPro(): boolean {
@@ -3595,8 +3596,8 @@ function ProfileScreen({ onSignOut, onDeleteAccount, onHowItWorks }: {
                   strokeLinecap="round"/>
               </svg>}
             />
-            <SettingsRow onPress={() => window.open("mailto:support@playbook.app?subject=Playbook%20Feedback", "_blank")}
-              iconBg="rgba(255,154,60,0.18)" label="Send Feedback"
+            <SettingsRow onPress={() => window.open(LEGAL_URLS.support, "_blank")}
+              iconBg="rgba(255,154,60,0.18)" label="Help & Support"
               iconEl={<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M1 1h12v9H8l-4 3V10H1V1z"
                   stroke="#ff9a3c" strokeWidth="1.5" strokeLinejoin="round"/>
