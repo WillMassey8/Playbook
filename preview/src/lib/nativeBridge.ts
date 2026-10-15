@@ -7,6 +7,8 @@
  *   { type: "requestPendingShares" }
  *   { type: "syncAuthToken", token: string | null }
  *     Write/clear JWT in App Group so the Share Extension can best-effort ingest.
+ *   { type: "openURL", url: string }
+ *     Open in Safari / SFSafariViewController (privacy, terms, source posts).
  *   { type: "purchase", plan }
  *   { type: "restore" }
  *   { type: "categorizedIngested", urls: string[] }
@@ -77,7 +79,28 @@ export const NativeBridge = {
   categorizedIngested(urls: string[]) {
     this.post({ type: "categorizedIngested", urls });
   },
+  /** Open an http(s) URL in the system browser (WKWebView-safe). */
+  openURL(url: string) {
+    this.post({ type: "openURL", url });
+  },
 };
+
+/** Open a URL via native Safari when bridged; otherwise window.open / navigate. */
+export function openExternal(url: string) {
+  if (!url) return;
+  const absolute = /^https?:\/\//i.test(url)
+    ? url
+    : new URL(url, window.location.origin).href;
+  if (NativeBridge.available) {
+    NativeBridge.openURL(absolute);
+    return;
+  }
+  const opened = window.open(absolute, "_blank", "noopener,noreferrer");
+  if (!opened) {
+    // Popup blocked (common in embedded previews) — same-tab fallback.
+    window.location.assign(absolute);
+  }
+}
 
 /** Apply a native Apple identity token to the Supabase session. */
 export async function applyAppleSession(

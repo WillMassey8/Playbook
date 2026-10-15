@@ -46,6 +46,11 @@ final class PlaybookWebBridge: NSObject, WKScriptMessageHandler, ASAuthorization
             if let urls = body["urls"] as? [String] {
                 SharedURLStore.removeURLs(urls)
             }
+        case "openURL":
+            if let raw = body["url"] as? String, let url = URL(string: raw),
+               ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+                UIApplication.shared.open(url)
+            }
         case "purchase", "restore":
             // Wire StoreKit when paid plans ship.
             break

@@ -10,15 +10,24 @@ import {
 import {
   NativeBridge,
   applyAppleSession,
+  openExternal,
   type AppleSessionDetail,
   type PendingShareItem,
 } from "./lib/nativeBridge";
 
 /** Hosted on the same Vercel origin the WebView loads — required for App Store Connect. */
+/** Same-origin on Vercel preview/prod; absolute fallback for App Store / odd hosts. */
+const LEGAL_ORIGIN =
+  typeof window !== "undefined" &&
+  (window.location.hostname.endsWith("vercel.app") ||
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1")
+    ? ""
+    : "https://playbook-pink.vercel.app";
 const LEGAL_URLS = {
-  privacy: "/privacy.html",
-  terms: "/terms.html",
-  support: "/support.html",
+  privacy: `${LEGAL_ORIGIN}/privacy.html`,
+  terms: `${LEGAL_ORIGIN}/terms.html`,
+  support: `${LEGAL_ORIGIN}/support.html`,
 };
 
 function readIsPro(): boolean {
@@ -1101,7 +1110,7 @@ function ClipShareSheet({ play, onClose }: { play: typeof FEED[0]; onClose: () =
         </svg>
       ),
       label: platformOpenLabel(play.platform),
-      action: () => { window.open(play.sourceUrl, "_blank"); onClose(); },
+      action: () => { openExternal(play.sourceUrl); onClose(); },
     },
     {
       icon: (
@@ -1293,7 +1302,7 @@ function FeedCard({ play, isActive, warm = false }:
 
   const showOpenCard = isActive && !autoplaySrc && !hasEmbed
     && (play.platform !== "twitter" || streamTimedOut || embedFailed);
-  const openSource = () => { if (play.sourceUrl) window.open(play.sourceUrl, "_blank"); };
+  const openSource = () => { if (play.sourceUrl) openExternal(play.sourceUrl); };
 
   return (
     <div style={{ width:"100%", height:"100%", position:"relative",
@@ -3566,7 +3575,7 @@ function ProfileScreen({ onSignOut, onDeleteAccount, onHowItWorks }: {
 
           {/* ── Legal ─────────────────────────────────────────────────────── */}
           <SettingsGroup label="Legal">
-            <SettingsRow onPress={() => window.open(LEGAL_URLS.privacy, "_blank")}
+            <SettingsRow onPress={() => openExternal(LEGAL_URLS.privacy)}
               iconBg="rgba(255,255,255,0.08)" label="Privacy Policy"
               iconEl={<svg width="13" height="14" viewBox="0 0 13 14" fill="none">
                 <path d="M6.5 1L1 3.5v4C1 10.5 3.5 13 6.5 13S12 10.5 12 7.5v-4L6.5 1z"
@@ -3575,7 +3584,7 @@ function ProfileScreen({ onSignOut, onDeleteAccount, onHowItWorks }: {
                   stroke={T.textSec} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>}
             />
-            <SettingsRow onPress={() => window.open(LEGAL_URLS.terms, "_blank")}
+            <SettingsRow onPress={() => openExternal(LEGAL_URLS.terms)}
               iconBg="rgba(255,255,255,0.08)" label="Terms of Service" last
               iconEl={<svg width="13" height="14" viewBox="0 0 13 14" fill="none">
                 <rect x="2" y="1" width="9" height="12" rx="1.5"
@@ -3596,7 +3605,7 @@ function ProfileScreen({ onSignOut, onDeleteAccount, onHowItWorks }: {
                   strokeLinecap="round"/>
               </svg>}
             />
-            <SettingsRow onPress={() => window.open(LEGAL_URLS.support, "_blank")}
+            <SettingsRow onPress={() => openExternal(LEGAL_URLS.support)}
               iconBg="rgba(255,154,60,0.18)" label="Help & Support"
               iconEl={<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M1 1h12v9H8l-4 3V10H1V1z"
@@ -5294,7 +5303,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
               </button>
               <span style={{ fontSize:11, color:STEEP.dove }}>·</span>
               <button type="button"
-                onClick={() => window.open(LEGAL_URLS.terms, "_blank")}
+                onClick={() => openExternal(LEGAL_URLS.terms)}
                 style={{ background:"none", border:"none", cursor:"pointer",
                   fontSize:11, color:STEEP.graphite, padding:6,
                   fontFamily:STEEP.sans, letterSpacing:"-0.005em" }}>
@@ -5302,7 +5311,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
               </button>
               <span style={{ fontSize:11, color:STEEP.dove }}>·</span>
               <button type="button"
-                onClick={() => window.open(LEGAL_URLS.privacy, "_blank")}
+                onClick={() => openExternal(LEGAL_URLS.privacy)}
                 style={{ background:"none", border:"none", cursor:"pointer",
                   fontSize:11, color:STEEP.graphite, padding:6,
                   fontFamily:STEEP.sans, letterSpacing:"-0.005em" }}>
@@ -5440,11 +5449,11 @@ function AuthSheet({ title, onEmailPress, onClose, onDone }:
         <div style={{ textAlign:"center", fontSize:11,
           color:STEEP.dove, lineHeight:1.6, letterSpacing:"-0.009em" }}>
           By continuing you agree to Playbook's{" "}
-          <span onClick={() => window.open(LEGAL_URLS.terms, "_blank")}
+          <span onClick={() => openExternal(LEGAL_URLS.terms)}
             style={{ color:STEEP.graphite, textDecoration:"underline", cursor:"pointer" }}>
             Terms of Service
           </span>{" "}and{" "}
-          <span onClick={() => window.open(LEGAL_URLS.privacy, "_blank")}
+          <span onClick={() => openExternal(LEGAL_URLS.privacy)}
             style={{ color:STEEP.graphite, textDecoration:"underline", cursor:"pointer" }}>
             Privacy Policy
           </span>

@@ -21,6 +21,7 @@ config.userContentController.add(self, name: "playbook")
 | `signInWithApple` | — | Run `ASAuthorizationAppleIDProvider`. On success dispatch `pb-apple-session` with `{ idToken, nonce }`. On cancel/fail dispatch `{ error }`. |
 | `requestPendingShares` | — | Peek App Group queue → inject (do not clear until `categorizedIngested`). |
 | `syncAuthToken` | `token: string \| null` | Save/clear JWT in App Group (`pendingUserToken`) for Share Extension. |
+| `openURL` | `url: string` | Open http(s) in Safari (`UIApplication.shared.open`). |
 | `categorizedIngested` | `urls: string[]` | Remove those URLs from the App Group queue. |
 | `purchase` / `restore` | `plan?` | StoreKit (optional for v1 free). |
 
@@ -90,7 +91,11 @@ func userContentController(_ ucc: WKUserContentController,
             SharedURLStore.clearUserToken()
         }
     case "categorizedIngested":
-        break // queue already drained on requestPendingShares; optional ack
+        if let urls = body["urls"] as? [String] { SharedURLStore.removeURLs(urls) }
+    case "openURL":
+        if let raw = body["url"] as? String, let url = URL(string: raw) {
+            UIApplication.shared.open(url)
+        }
     default:
         break
     }
