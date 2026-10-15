@@ -1,31 +1,49 @@
 # Morning — 15-minute submission unblock
 
-Do these in order. Details live in `SUBMISSION_CHECKLIST.md`.
+Do these in order. Details: `SUBMISSION_CHECKLIST.md`.
+
+## 0. Smoke-test Preview (already green)
+
+https://playbook-git-cursor-share-intake-a-c09719-will-masseys-projects.vercel.app
+
+Confirm `/privacy.html`, `/terms.html`, and `?skip=1&shareTest=1` intake.
 
 ## 1. Promote web (blocks phone testing)
-Vercel → Playbook → Deployments → latest **PR #5** commit → **Promote to Production**  
-Confirm View Source JS ≠ `CK9iB24k` and https://playbook-pink.vercel.app/privacy.html loads.
+
+Vercel → Playbook → Deployments → latest **PR #5** → **Promote to Production**  
+Confirm https://playbook-pink.vercel.app View Source JS ≠ `CK9iB24k`  
+and https://playbook-pink.vercel.app/privacy.html loads (today it 404s until Promote).
 
 ## 2. Supabase functions
+
 ```bash
 supabase functions deploy ingest-shared-url
 supabase functions deploy resolve-playback-url
 supabase functions deploy delete-account
 ```
+
 Enable **Apple** provider if Sign in with Apple is offered.
 
 ## 3. WebView shell (Desktop Playbook / Xcode)
-Implement handlers in `NATIVE_BRIDGE.md`, especially:
+
+Drop in `ios/WebViewShell/` (see `NATIVE_BRIDGE.md`):
+
+- Handler name: **`playbook`**
 - `signInWithApple` → `pb-apple-session` `{idToken,nonce}`
-- `requestPendingShares` → `pb-add-categorized`
+- `requestPendingShares` → peek queue → `pb-add-categorized`
 - `syncAuthToken` → App Group JWT
+- `categorizedIngested` → remove acked URLs
+
+Match App Group on shell **and** Share Extension (`group.com.wymas.Playbook` or your existing group).
 
 Archive → TestFlight.
 
 ## 4. Phone acceptance
+
 Share from X → **Saved to Playbook ✓** → reopen → categorize → persists → Delete Account works.
 
-## Paste into App Store Connect
+## App Store Connect paste
+
 - Privacy: https://playbook-pink.vercel.app/privacy.html
 - Terms: https://playbook-pink.vercel.app/terms.html
 - Review notes: `APP_STORE_REVIEW_NOTES.md`

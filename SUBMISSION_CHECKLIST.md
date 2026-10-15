@@ -12,6 +12,9 @@ Bridge contract: [`NATIVE_BRIDGE.md`](./NATIVE_BRIDGE.md).
 
 ## 0) Unblock production (do first — blocks everything)
 
+Preview (verified overnight): https://playbook-git-cursor-share-intake-a-c09719-will-masseys-projects.vercel.app  
+Production `privacy.html` is **404 until Promote**.
+
 1. Vercel → Deployments → open **latest** PR #5 / this branch commit
 2. **Promote to Production** for `playbook-pink.vercel.app`
 3. Confirm View Source shows a **new** JS hash (NOT `CK9iB24k`)

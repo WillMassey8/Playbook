@@ -4,6 +4,8 @@ Ship path: native WKWebView shell loads `https://playbook-pink.vercel.app` + Sha
 
 Web implementation: `preview/src/lib/nativeBridge.ts`.
 
+**Drop-in Swift:** `ios/WebViewShell/` (`PlaybookWebBridge.swift`, `PlaybookWebViewController.swift`, `SharedURLStore.swift`).
+
 ## Message handler
 
 Register `WKUserContentController` handler named **`playbook`**.
@@ -17,9 +19,9 @@ config.userContentController.add(self, name: "playbook")
 | `type` | Payload | Native action |
 |--------|---------|---------------|
 | `signInWithApple` | — | Run `ASAuthorizationAppleIDProvider`. On success dispatch `pb-apple-session` with `{ idToken, nonce }`. On cancel/fail dispatch `{ error }`. |
-| `requestPendingShares` | — | Drain App Group pending URL queue → inject into page (see below). |
+| `requestPendingShares` | — | Peek App Group queue → inject (do not clear until `categorizedIngested`). |
 | `syncAuthToken` | `token: string \| null` | Save/clear JWT in App Group (`pendingUserToken`) for Share Extension. |
-| `categorizedIngested` | `urls: string[]` | Remove those URLs from pending queue (already consumed by web). |
+| `categorizedIngested` | `urls: string[]` | Remove those URLs from the App Group queue. |
 | `purchase` / `restore` | `plan?` | StoreKit (optional for v1 free). |
 
 ## Native → web

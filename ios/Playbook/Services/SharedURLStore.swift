@@ -27,6 +27,22 @@ enum SharedURLStore {
         return raw.compactMap(URL.init(string:))
     }
 
+    static func peekPendingURLs() -> [URL] {
+        pendingQueue().compactMap(URL.init(string:))
+    }
+
+    static func removeURLs(_ urls: [String]) {
+        guard !urls.isEmpty else { return }
+        let drop = Set(urls)
+        let kept = pendingQueue().filter { !drop.contains($0) }
+        defaults?.set(kept, forKey: AppConstants.pendingShareQueueKey)
+        if let last = kept.last {
+            defaults?.set(last, forKey: AppConstants.pendingShareURLKey)
+        } else {
+            defaults?.removeObject(forKey: AppConstants.pendingShareURLKey)
+        }
+    }
+
     /// Legacy single-URL consumer.
     static func consumePendingURL() -> URL? {
         consumePendingURLs().first
