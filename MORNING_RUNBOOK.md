@@ -12,7 +12,9 @@ Confirm `/privacy.html`, `/terms.html`, and `?skip=1&shareTest=1` intake.
 
 Vercel → Playbook → Deployments → latest **PR #5** → **Promote to Production**  
 Confirm https://playbook-pink.vercel.app View Source JS ≠ `CK9iB24k`  
-and https://playbook-pink.vercel.app/privacy.html loads (today it 404s until Promote).
+and https://playbook-pink.vercel.app/privacy.html loads.
+
+As of overnight check: production is still on stale `index-NwAGEV6c.js` and privacy/terms/support are **404 until Promote**.
 
 ## 2. Supabase functions
 
