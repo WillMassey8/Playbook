@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useContext, createContext, useMemo } from 
 import IPhoneSimulator from "./IPhoneSimulator";
 import { supabase } from "./lib/supabase";
 import { ingestPlayToAccount, fetchRemotePlays, fetchRemoteCategories } from "./lib/plays";
+import { canonicalizeSourceUrl } from "./lib/urls";
 import {
   deleteAccount,
   signOutAccount,
@@ -419,13 +420,15 @@ function detectPlatform(url: string): SocialPlatform {
 
 /** Build a play from a clip categorized in the Share Extension. */
 function makeCategorizedPlay(url: string, categoryId: string, categoryName?: string): UserPlayItem {
+  let sourceUrl = url;
+  try { sourceUrl = canonicalizeSourceUrl(url); } catch {}
   const catName = categoryName || CATEGORIES.find(c => c.id === categoryId)?.name || "Playbook";
   return {
     id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     categoryId,
     title: `${catName} clip`,
-    platform: detectPlatform(url),
-    sourceUrl: url,
+    platform: detectPlatform(sourceUrl),
+    sourceUrl,
     savedAt: catName,
     liked: false,
     views: 0,
@@ -436,12 +439,14 @@ function makeCategorizedPlay(url: string, categoryId: string, categoryName?: str
 
 /** A clip shared from the extension that hasn't been categorized yet. */
 function makeUncategorizedPlay(url: string): UserPlayItem {
+  let sourceUrl = url;
+  try { sourceUrl = canonicalizeSourceUrl(url); } catch {}
   return {
     id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     categoryId: "inbox", // reserved — triggers full-screen intake, not a real category
     title: "New shared clip",
-    platform: detectPlatform(url),
-    sourceUrl: url,
+    platform: detectPlatform(sourceUrl),
+    sourceUrl,
     savedAt: null,
     liked: false,
     views: 0,

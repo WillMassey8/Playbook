@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { canonicalizeSourceUrl } from "./urls";
 
 /** Persist a shared URL to the logged-in user's plays table via edge function. */
 export async function ingestPlayToAccount(
@@ -12,7 +13,9 @@ export async function ingestPlayToAccount(
     return { ok: false, error: "Not signed in" };
   }
 
-  const body: Record<string, unknown> = { source_url: sourceUrl };
+  let normalized = sourceUrl;
+  try { normalized = canonicalizeSourceUrl(sourceUrl); } catch { /* keep raw */ }
+  const body: Record<string, unknown> = { source_url: normalized };
   if (categoryId) body.category_id = categoryId;
   if (categoryName) body.category_name = categoryName;
   if (title) body.title = title;
