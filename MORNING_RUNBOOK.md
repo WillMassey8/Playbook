@@ -28,7 +28,7 @@ Enable **Apple** provider if Sign in with Apple is offered.
 
 ## 3. WebView shell (Desktop Playbook / Xcode)
 
-Drop in `ios/WebViewShell/` (see `NATIVE_BRIDGE.md`):
+Drop in `ios/WebViewShell/` (see `NATIVE_BRIDGE.md`; entitlements sample included):
 
 - Handler name: **`playbook`**
 - `signInWithApple` → `pb-apple-session` `{idToken,nonce}`
@@ -50,5 +50,7 @@ Share from X → **Saved to Playbook ✓** → reopen → categorize → persist
 - Terms: https://playbook-pink.vercel.app/terms.html
 - Support: https://playbook-pink.vercel.app/support.html
 - Review notes: `APP_STORE_REVIEW_NOTES.md`
+- Age rating: `APP_STORE_AGE_RATING.md`
+- Listing copy: `APP_STORE_LISTING.md`
 
 **PR:** https://github.com/WillMassey8/Playbook/pull/5

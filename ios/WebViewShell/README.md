@@ -9,3 +9,5 @@ Copy these files into the Desktop / Xcode WebView app that loads
 4. Point `WKWebView` at production (or the PR preview URL while testing)
 
 See also `/NATIVE_BRIDGE.md`.
+
+Also copy `Playbook.entitlements.sample` → your target entitlements (Sign in with Apple + App Group).
