@@ -26,4 +26,10 @@
 
 - Preview deploy + privacy/terms/support  
 - Share intake, Apple bridge contract, delete-account code, openURL, embed navigation  
-- Vercel CI on PR  
+- Vercel CI on PR
+
+## Status snapshot (2026-10-15 12:46 UTC)
+
+- Production: still `index-NwAGEV6c.js`, privacy/terms/support **404** → Promote required
+- Preview: green (privacy/terms/support 200)
+- PR #5 CI: green
