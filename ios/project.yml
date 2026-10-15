@@ -34,7 +34,7 @@ targets:
     info:
       path: Playbook/Info.plist
       properties:
-        CFBundleDisplayName: Playbook AI
+        CFBundleDisplayName: Playbook
         UILaunchScreen: {}
         ITSAppUsesNonExemptEncryption: false
         CFBundleURLTypes:
@@ -64,7 +64,7 @@ targets:
     info:
       path: PlaybookShareExtension/Info.plist
       properties:
-        CFBundleDisplayName: Playbook AI
+        CFBundleDisplayName: Playbook
         SUPABASE_URL: https://riwjijzjqfdsfocnzria.supabase.co
         SUPABASE_ANON_KEY: sb_publishable_dDyrNmILRObvGMTsDTLb2g_uj94nVXj
 
