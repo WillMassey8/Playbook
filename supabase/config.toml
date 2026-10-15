@@ -9,3 +9,9 @@ major_version = 15
 
 [functions.ingest-shared-url]
 verify_jwt = true
+
+[functions.delete-account]
+verify_jwt = true
+
+[functions.resolve-playback-url]
+verify_jwt = true
