@@ -1,6 +1,10 @@
 # Playbook
 
+> **Ship path (App Store):** WebView shell `com.wymas.Playbook` loads `preview/` from Vercel + Share Extension.  
+> Start morning: [`MORNING_RUNBOOK.md`](./MORNING_RUNBOOK.md) · bridge: [`NATIVE_BRIDGE.md`](./NATIVE_BRIDGE.md) · PR checklist: [`SUBMISSION_CHECKLIST.md`](./SUBMISSION_CHECKLIST.md)
+
 Football coaches save play clips from **X (Twitter), TikTok, Instagram, and Facebook** into a categorized digital playbook. Share a link, categorize it, and **muted-autoplay** clips inside the app — no play tap, no leaving the app for normal public posts.
+
 
 ## v1 scope
 

@@ -300,25 +300,51 @@ Deno.serve(async (req) => {
       body.category_name,
     );
 
-    const { data: play, error: insertError } = await admin
-      .from("plays")
-      .insert({
-        user_id: userId,
-        category_id: resolvedCategoryId,
-        source_url: normalizedUrl,
-        source_platform: platform,
-        title: body.title ?? metadata.title ?? null,
-        thumbnail_url: metadata.thumbnailUrl ?? null,
-        embed_url: metadata.embedUrl ?? null,
-        video_storage_path: null,
-        status: "ready",
-        error_message: null,
-      })
-      .select()
-      .single();
+    const playFields = {
+      category_id: resolvedCategoryId,
+      source_platform: platform,
+      title: body.title ?? metadata.title ?? null,
+      thumbnail_url: metadata.thumbnailUrl ?? null,
+      embed_url: metadata.embedUrl ?? null,
+      video_storage_path: null,
+      status: "ready" as const,
+      error_message: null,
+    };
 
-    if (insertError || !play) {
-      throw insertError ?? new Error("Failed to create play");
+    // Idempotent: re-sharing the same URL updates metadata/category instead of duplicating.
+    const { data: existing } = await admin
+      .from("plays")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("source_url", normalizedUrl)
+      .maybeSingle();
+
+    let play;
+    if (existing?.id) {
+      const { data: updated, error: updateError } = await admin
+        .from("plays")
+        .update(playFields)
+        .eq("id", existing.id)
+        .select()
+        .single();
+      if (updateError || !updated) {
+        throw updateError ?? new Error("Failed to update play");
+      }
+      play = updated;
+    } else {
+      const { data: inserted, error: insertError } = await admin
+        .from("plays")
+        .insert({
+          user_id: userId,
+          source_url: normalizedUrl,
+          ...playFields,
+        })
+        .select()
+        .single();
+      if (insertError || !inserted) {
+        throw insertError ?? new Error("Failed to create play");
+      }
+      play = inserted;
     }
 
     return new Response(JSON.stringify({ play }), {
