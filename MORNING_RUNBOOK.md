@@ -40,17 +40,21 @@ Enable **Apple** provider if Sign in with Apple is offered.
 
 ## 3. WebView shell (Desktop Playbook / Xcode)
 
-Drop in `ios/WebViewShell/` (see `NATIVE_BRIDGE.md`; entitlements sample included):
+Drop in `ios/WebViewShell/` (see `NATIVE_BRIDGE.md`; entitlements + Privacy Manifest samples included):
 
 - Handler name: **`playbook`**
 - `signInWithApple` → `pb-apple-session` `{idToken,nonce}`
 - `requestPendingShares` → peek queue → `pb-add-categorized`
 - `syncAuthToken` → App Group JWT
 - `categorizedIngested` → remove acked URLs
+- Add **`PrivacyInfo.xcprivacy`** to the app target (App Store requirement)
+- Merge `Info.plist.sample` (`ITSAppUsesNonExemptEncryption = false`)
 
 Match App Group on shell **and** Share Extension (`group.com.wymas.Playbook` or your existing group).
 
 Archive → TestFlight.
+
+ASC export compliance question: answer **No** (standard HTTPS only).
 
 ## 4. Phone acceptance
 

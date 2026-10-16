@@ -30,3 +30,7 @@ Password: _(paste here)_
 - Privacy: https://playbook-pink.vercel.app/privacy.html
 - Terms: https://playbook-pink.vercel.app/terms.html
 - Support: https://playbook-pink.vercel.app/support.html
+
+## Export compliance
+
+Uses only standard HTTPS / Apple platform encryption. Answer **No** to “Does your app use encryption?” / non-exempt encryption in App Store Connect (`ITSAppUsesNonExemptEncryption = false`).

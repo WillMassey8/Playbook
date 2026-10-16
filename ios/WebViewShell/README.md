@@ -7,15 +7,12 @@ Copy these files into the Desktop / Xcode WebView app that loads
 2. Enable Sign in with Apple on the App ID
 3. Register `WKScriptMessageHandler` name **`playbook`**
 4. Point `WKWebView` at production (or the PR preview URL while testing)
-
-See also `/NATIVE_BRIDGE.md`.
+5. Add **`PrivacyInfo.xcprivacy`** to the app target (required for App Store)
+6. Merge keys from `Info.plist.sample` (`ITSAppUsesNonExemptEncryption`, URL schemes, LSApplicationQueriesSchemes)
 
 Also copy `Playbook.entitlements.sample` → your target entitlements (Sign in with Apple + App Group).
 
-## Embed playback
-
-`PlaybookWebViewController` allows iframe loads for X / TikTok / Instagram / Facebook
-CDN hosts and opens unexpected top-level navigations in Safari.
+See also `/NATIVE_BRIDGE.md` and `/SHARE_EXTENSION_NOTES.md`.
 
 ## Embed playback
 

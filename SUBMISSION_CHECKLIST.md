@@ -7,6 +7,8 @@ Bridge contract: [`NATIVE_BRIDGE.md`](./NATIVE_BRIDGE.md).
 **App Store Connect URLs (copy/paste):**
 - Privacy: `https://playbook-pink.vercel.app/privacy.html`
 - Terms: `https://playbook-pink.vercel.app/terms.html`
+- Support: `https://playbook-pink.vercel.app/support.html`
+- Export compliance: **No** (standard HTTPS / Apple frameworks only — `ITSAppUsesNonExemptEncryption = false`)
 
 ---
 
