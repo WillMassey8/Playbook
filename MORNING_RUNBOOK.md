@@ -6,8 +6,11 @@ Do these in order. Details: `SUBMISSION_CHECKLIST.md`.
 
 ## 0. Smoke-test Preview (already green)
 
-https://playbook-git-cursor-share-intake-a-c09719-will-masseys-projects.vercel.app
+```bash
+./scripts/verify-submission.sh
+```
 
+Or open https://playbook-git-cursor-share-intake-a-c09719-will-masseys-projects.vercel.app  
 Confirm `/privacy.html`, `/terms.html`, and `?skip=1&shareTest=1` intake.
 
 ## 1. Promote web (blocks phone testing)

@@ -32,7 +32,6 @@
 	AE36FC8A4F894CAE84440955 /* HomeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34EA7424D68A47049F835E5C /* HomeViewModel.swift */; };
 	DFCF355067EB4A209B2B81C1 /* PlaybookViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E2A4F2F149647D7B750950A /* PlaybookViewModel.swift */; };
 	925286707F334DA68357F26C /* ReelViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11AE80AA82D54D59A63D9421 /* ReelViewModel.swift */; };
-	F523AB1FB5EB4BEF8CFF4FFC /* CategorizeShareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27121EFB98474A3EB247297F /* CategorizeShareView.swift */; };
 	2373F6387D7541CB828B0C1D /* ShareIngestService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 951063847A054A099FFEC313 /* ShareIngestService.swift */; };
 	72CBAF754940469FAF789077 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FD10B660D9545BD8571BE15 /* ShareViewController.swift */; };
 	D3049FC284B544288C17B48F /* SharedURLStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A2B3E8754314A15A23050EC /* SharedURLStore.swift */; };
@@ -83,7 +82,6 @@
 	34EA7424D68A47049F835E5C /* HomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Playbook/ViewModels/HomeViewModel.swift; sourceTree = SOURCE_ROOT; };
 	8E2A4F2F149647D7B750950A /* PlaybookViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Playbook/ViewModels/PlaybookViewModel.swift; sourceTree = SOURCE_ROOT; };
 	11AE80AA82D54D59A63D9421 /* ReelViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Playbook/ViewModels/ReelViewModel.swift; sourceTree = SOURCE_ROOT; };
-	27121EFB98474A3EB247297F /* CategorizeShareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybookShareExtension/CategorizeShareView.swift; sourceTree = SOURCE_ROOT; };
 	951063847A054A099FFEC313 /* ShareIngestService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybookShareExtension/ShareIngestService.swift; sourceTree = SOURCE_ROOT; };
 	2FD10B660D9545BD8571BE15 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybookShareExtension/ShareViewController.swift; sourceTree = SOURCE_ROOT; };
 	9A2B3E8754314A15A23050EC /* SharedURLStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybookShareExtension/SharedURLStore.swift; sourceTree = SOURCE_ROOT; };
@@ -120,7 +118,6 @@
 	CAF9192934904FF78FD27A14 /* PlaybookShareExtension */ = {
 		isa = PBXGroup;
 		children = (
-			27121EFB98474A3EB247297F,
 			951063847A054A099FFEC313,
 			2FD10B660D9545BD8571BE15,
 			9A2B3E8754314A15A23050EC,
@@ -233,7 +230,6 @@
 			925286707F334DA68357F26C /* ReelViewModel.swift in Sources */,
 		); runOnlyForDeploymentPostprocessing = 0; };
 	D58AAB849E754D389F996A3A /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
-			F523AB1FB5EB4BEF8CFF4FFC /* CategorizeShareView.swift in Sources */,
 			2373F6387D7541CB828B0C1D /* ShareIngestService.swift in Sources */,
 			72CBAF754940469FAF789077 /* ShareViewController.swift in Sources */,
 			D3049FC284B544288C17B48F /* SharedURLStore.swift in Sources */,
