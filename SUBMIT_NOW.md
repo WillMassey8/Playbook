@@ -32,12 +32,12 @@
 - Foreground re-pull for pending shares
 - Vercel CI on PR
 
-## Status snapshot (2026-10-17 02:15 UTC)
+## Status snapshot (2026-10-17 06:00 UTC — morning)
 
-- Production: still `index-NwAGEV6c.js`, privacy/terms/support **404** → **Promote required**
+Agent overnight path is **done**. Only human dashboard steps remain:
+
+- Production: still `index-NwAGEV6c.js`, privacy/terms/support **404** → **Promote first**
 - Preview: green (`index-viaSOKDV.js`) — `./scripts/verify-submission.sh`
-- ASC privacy labels draft added (`APP_STORE_PRIVACY_LABELS.md`)
-- Unique source_url migration ready (`supabase db push`)
+- Then: `supabase db push` + 3 function deploys → WebViewShell + App Group match → TestFlight → ASC paste pack
+- Supabase MCP Allow was never clicked overnight — deploy via CLI is fine
 - App Group mismatch = silent share failure — `ios/WebViewShell/APP_GROUP.md`
-- PR #5 CI: green
-- Remaining: Promote, Supabase db+functions, WebViewShell/TestFlight, ASC
