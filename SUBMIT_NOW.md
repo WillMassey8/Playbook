@@ -11,7 +11,7 @@
 | 1 | Vercel → latest PR deploy → **Promote to Production** | `playbook-pink.vercel.app/privacy.html` returns 200 (not 404) |
 | 2 | `supabase functions deploy ingest-shared-url` + `resolve-playback-url` + `delete-account` | functions list shows all three |
 | 3 | Enable Apple provider (if offering Sign in with Apple) | Apple button works on device |
-| 4 | Drop `ios/WebViewShell/` into `com.wymas.Playbook` + matching App Group + `PrivacyInfo.xcprivacy` | Share → Saved ✓ → reopen categorizes |
+| 4 | Drop `ios/WebViewShell/` into `com.wymas.Playbook` + **same App Group string on shell + Share Extension** + `PrivacyInfo.xcprivacy` (see `ios/WebViewShell/APP_GROUP.md`) | Share → Saved ✓ → reopen categorizes |
 | 5 | Archive → TestFlight → phone acceptance | Checklist §4 green |
 | 6 | Create a reviewer demo account → paste into `APP_STORE_REVIEW_NOTES.md` | ASC Review Notes complete |
 
@@ -26,16 +26,16 @@
 
 ## Already green (do not redo)
 
-- Preview deploy + privacy/terms/support (`index-B9bj2WA3.js`)
+- Preview deploy + privacy/terms/support (`index-viaSOKDV.js`)
 - Share intake, Apple bridge contract, delete-account code, openURL, embed navigation
-- Privacy Manifest sample (`ios/WebViewShell/PrivacyInfo.xcprivacy`)
+- Privacy Manifest samples (app + Share Extension)
+- Foreground re-pull for pending shares
 - Vercel CI on PR
 
-## Status snapshot (2026-10-17 00:05 UTC)
+## Status snapshot (2026-10-17 00:45 UTC)
 
 - Production: still `index-NwAGEV6c.js`, privacy/terms/support **404** → **Promote required**
-- Preview: green — `./scripts/verify-submission.sh` (re-Promote after latest web push)
-- Share return-from-background: web visibility + native `willEnterForeground` re-pull pending shares
-- Share Extension Privacy Manifest added
+- Preview: green (`index-viaSOKDV.js`) — `./scripts/verify-submission.sh`
+- App Group mismatch is the #1 silent share failure — read `ios/WebViewShell/APP_GROUP.md`
 - PR #5 CI: green
 - Remaining: Promote, Supabase deploy, WebViewShell/TestFlight, ASC

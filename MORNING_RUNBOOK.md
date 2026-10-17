@@ -53,7 +53,8 @@ Drop in `ios/WebViewShell/` (see `NATIVE_BRIDGE.md`; entitlements + Privacy Mani
 - Add **`PrivacyInfo.xcprivacy`** to the app target (App Store requirement)
 - Merge `Info.plist.sample` (`ITSAppUsesNonExemptEncryption = false`)
 
-Match App Group on shell **and** Share Extension (`group.com.wymas.Playbook` or your existing group).
+Match App Group on shell **and** Share Extension — see [`ios/WebViewShell/APP_GROUP.md`](./ios/WebViewShell/APP_GROUP.md).
+Mismatched groups look like “Saved ✓” then no categorize overlay.
 
 Archive → TestFlight.
 

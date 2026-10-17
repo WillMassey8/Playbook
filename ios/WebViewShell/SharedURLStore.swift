@@ -3,7 +3,8 @@ import Foundation
 /// App Group queue shared with the Share Extension.
 /// Keep the app group id identical on the shell target and the extension.
 enum WebShellAppGroup {
-    /// Change this to match your Share Extension entitlements.
+    /// MUST equal the Share Extension App Group or pending shares never arrive.
+    /// See APP_GROUP.md — do not leave this mismatched with entitlements.
     static let id = "group.com.wymas.Playbook"
     static let pendingShareURLKey = "pendingShareURL"
     static let pendingShareQueueKey = "pendingShareURLQueue"
