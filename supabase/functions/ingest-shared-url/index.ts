@@ -384,10 +384,42 @@ Deno.serve(async (req) => {
         })
         .select()
         .single();
-      if (insertError || !inserted) {
-        throw insertError ?? new Error("Failed to create play");
+      if (insertError) {
+        // Unique (user_id, source_url) race with a parallel share ingest — update winner.
+        const code = (insertError as { code?: string }).code;
+        if (code === "23505") {
+          const { data: raced } = await admin
+            .from("plays")
+            .select("id, category_id, title")
+            .eq("user_id", userId)
+            .eq("source_url", normalizedUrl)
+            .maybeSingle();
+          if (raced?.id) {
+            const updateFields: Record<string, unknown> = { ...baseFields };
+            if (resolvedCategoryId) updateFields.category_id = resolvedCategoryId;
+            if (body.title) updateFields.title = body.title;
+            else if (!raced.title && metadata.title) updateFields.title = metadata.title;
+            const { data: updated, error: updateError } = await admin
+              .from("plays")
+              .update(updateFields)
+              .eq("id", raced.id)
+              .select()
+              .single();
+            if (updateError || !updated) {
+              throw updateError ?? new Error("Failed to update play after conflict");
+            }
+            play = updated;
+          } else {
+            throw insertError;
+          }
+        } else {
+          throw insertError;
+        }
+      } else if (!inserted) {
+        throw new Error("Failed to create play");
+      } else {
+        play = inserted;
       }
-      play = inserted;
     }
 
     return new Response(JSON.stringify({ play }), {

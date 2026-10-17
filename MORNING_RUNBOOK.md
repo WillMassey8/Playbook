@@ -31,10 +31,11 @@ WebView `startURL` at the Preview deploy:
 
 Then switch back to `https://playbook-pink.vercel.app` after Promote.
 
-## 2. Supabase functions
+## 2. Supabase functions + migration
 
 ```bash
-supabase functions deploy ingest-shared-url   # includes category-preserve + URL canonicalize
+supabase db push   # includes plays unique (user_id, source_url) for share dedupe
+supabase functions deploy ingest-shared-url   # category-preserve + URL canonicalize + conflict retry
 supabase functions deploy resolve-playback-url
 supabase functions deploy delete-account
 ```
