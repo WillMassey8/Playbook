@@ -1,21 +1,34 @@
 import { useState, useRef, useEffect, useContext, createContext, useMemo } from "react";
 import IPhoneSimulator from "./IPhoneSimulator";
 import { supabase } from "./lib/supabase";
+import { ingestPlayToAccount, fetchRemotePlays, fetchRemoteCategories } from "./lib/plays";
+import { canonicalizeSourceUrl } from "./lib/urls";
+import {
+  deleteAccount,
+  signOutAccount,
+  syncAuthTokenToNative,
+} from "./lib/account";
+import {
+  NativeBridge,
+  applyAppleSession,
+  openExternal,
+  type AppleSessionDetail,
+  type PendingShareItem,
+} from "./lib/nativeBridge";
 
-// ─── Native iOS bridge (StoreKit purchases + Pro entitlement) ─────────────────
-// The Swift app injects window.__pbPro / dispatches "pb-entitlement", and listens
-// for messages posted to the "playbook" handler. In a browser (no bridge) these
-// no-op and the paywall falls back to just proceeding.
-const NativeBridge = {
-  get available(): boolean {
-    return typeof window !== "undefined" &&
-      !!(window as any).webkit?.messageHandlers?.playbook;
-  },
-  post(msg: Record<string, unknown>) {
-    (window as any).webkit?.messageHandlers?.playbook?.postMessage(msg);
-  },
-  purchase(plan: string) { this.post({ type: "purchase", plan }); },
-  restore() { this.post({ type: "restore" }); },
+/** Hosted on the same Vercel origin the WebView loads — required for App Store Connect. */
+/** Same-origin on Vercel preview/prod; absolute fallback for App Store / odd hosts. */
+const LEGAL_ORIGIN =
+  typeof window !== "undefined" &&
+  (window.location.hostname.endsWith("vercel.app") ||
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1")
+    ? ""
+    : "https://playbook-pink.vercel.app";
+const LEGAL_URLS = {
+  privacy: `${LEGAL_ORIGIN}/privacy.html`,
+  terms: `${LEGAL_ORIGIN}/terms.html`,
+  support: `${LEGAL_ORIGIN}/support.html`,
 };
 
 function readIsPro(): boolean {
@@ -407,13 +420,15 @@ function detectPlatform(url: string): SocialPlatform {
 
 /** Build a play from a clip categorized in the Share Extension. */
 function makeCategorizedPlay(url: string, categoryId: string, categoryName?: string): UserPlayItem {
+  let sourceUrl = url;
+  try { sourceUrl = canonicalizeSourceUrl(url); } catch {}
   const catName = categoryName || CATEGORIES.find(c => c.id === categoryId)?.name || "Playbook";
   return {
     id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     categoryId,
     title: `${catName} clip`,
-    platform: detectPlatform(url),
-    sourceUrl: url,
+    platform: detectPlatform(sourceUrl),
+    sourceUrl,
     savedAt: catName,
     liked: false,
     views: 0,
@@ -422,22 +437,26 @@ function makeCategorizedPlay(url: string, categoryId: string, categoryName?: str
   };
 }
 
-/** A clip shared from the extension that hasn't been categorized yet. It shows
- *  up in the feed with the normal "Save to Playbook" prompt so the user sorts
- *  it in-app, later. */
+/** A clip shared from the extension that hasn't been categorized yet. */
 function makeUncategorizedPlay(url: string): UserPlayItem {
+  let sourceUrl = url;
+  try { sourceUrl = canonicalizeSourceUrl(url); } catch {}
   return {
     id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    categoryId: "",
-    title: "New clip",
-    platform: detectPlatform(url),
-    sourceUrl: url,
+    categoryId: "inbox", // reserved — triggers full-screen intake, not a real category
+    title: "New shared clip",
+    platform: detectPlatform(sourceUrl),
+    sourceUrl,
     savedAt: null,
     liked: false,
     views: 0,
     addedAt: new Date(),
     gradient: ["#1a2440", "#0d0d0f"],
   };
+}
+
+function isInboxPlay(p: { categoryId: string; savedAt: string | null }): boolean {
+  return p.categoryId === "inbox" || (p.categoryId === "" && !p.savedAt);
 }
 
 const PlaysCtx = createContext<{ plays: UserPlayItem[]; addPlay: (p: UserPlayItem) => void }>({
@@ -1096,7 +1115,7 @@ function ClipShareSheet({ play, onClose }: { play: typeof FEED[0]; onClose: () =
         </svg>
       ),
       label: platformOpenLabel(play.platform),
-      action: () => { window.open(play.sourceUrl, "_blank"); onClose(); },
+      action: () => { openExternal(play.sourceUrl); onClose(); },
     },
     {
       icon: (
@@ -1145,7 +1164,7 @@ function ClipShareSheet({ play, onClose }: { play: typeof FEED[0]; onClose: () =
               overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
               {play.title}
             </div>
-            <div style={{ fontSize:12, color: T.textFaint }}>Playbook AI</div>
+            <div style={{ fontSize:12, color: T.textFaint }}>Playbook</div>
           </div>
         </div>
 
@@ -1288,7 +1307,7 @@ function FeedCard({ play, isActive, warm = false }:
 
   const showOpenCard = isActive && !autoplaySrc && !hasEmbed
     && (play.platform !== "twitter" || streamTimedOut || embedFailed);
-  const openSource = () => { if (play.sourceUrl) window.open(play.sourceUrl, "_blank"); };
+  const openSource = () => { if (play.sourceUrl) openExternal(play.sourceUrl); };
 
   return (
     <div style={{ width:"100%", height:"100%", position:"relative",
@@ -2515,7 +2534,7 @@ function ClipPlayerScreen({ playId, from, navigate }:
 }
 
 // ─── SHARE EXTENSION PREVIEW ──────────────────────────────────────────────────
-// Shows exactly what a coach sees when they tap Share → Playbook AI on iOS
+// Shows exactly what a coach sees when they tap Share → Playbook on iOS
 
 const SHARE_URL = "https://x.com/CoachDanCasey/status/1980441997854011558";
 
@@ -2619,7 +2638,7 @@ function ShareExtPreview({ navigate }: { navigate:(s:Screen)=>void }) {
           <div>
             <div style={{ fontFamily: STEEP.serif, fontSize:18, fontWeight:500,
               color: T.text, letterSpacing:"-0.01em", marginBottom:4 }}>
-              Save to Playbook AI
+              Save to Playbook
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:5 }}>
               <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
@@ -3320,7 +3339,11 @@ function ImportLinkSheet({ onClose, onImported, initialUrl, mandatory }:
   );
 }
 
-function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
+function ProfileScreen({ onSignOut, onDeleteAccount, onHowItWorks }: {
+  onSignOut:()=>void;
+  onDeleteAccount:()=>Promise<void> | void;
+  onHowItWorks:()=>void;
+}) {
   const { isDark, toggleTheme } = useTheme();
   const { addPlay } = usePlays();
   const [importOpen, setImportOpen] = useState(false);
@@ -3329,6 +3352,7 @@ function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
   const [plan]             = useState<PlanTier>("individual"); // mock — swap to "team" to test
   const [signOutConfirm, setSignOutConfirm]   = useState(false);
   const [deleteStep, setDeleteStep]           = useState<0|1|2>(0); // 0=hidden 1=confirm 2=typed
+  const [deleting, setDeleting]               = useState(false);
 
   const clipsUsed = 47;
   const clipsMax  = plan === "individual" ? 75 : 2000;
@@ -3556,7 +3580,7 @@ function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
 
           {/* ── Legal ─────────────────────────────────────────────────────── */}
           <SettingsGroup label="Legal">
-            <SettingsRow onPress={() => window.open("https://apple.com/legal/privacy", "_blank")}
+            <SettingsRow onPress={() => openExternal(LEGAL_URLS.privacy)}
               iconBg="rgba(255,255,255,0.08)" label="Privacy Policy"
               iconEl={<svg width="13" height="14" viewBox="0 0 13 14" fill="none">
                 <path d="M6.5 1L1 3.5v4C1 10.5 3.5 13 6.5 13S12 10.5 12 7.5v-4L6.5 1z"
@@ -3565,7 +3589,7 @@ function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
                   stroke={T.textSec} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>}
             />
-            <SettingsRow onPress={() => window.open("https://apple.com/legal/internet-services/itunes/us/terms.html", "_blank")}
+            <SettingsRow onPress={() => openExternal(LEGAL_URLS.terms)}
               iconBg="rgba(255,255,255,0.08)" label="Terms of Service" last
               iconEl={<svg width="13" height="14" viewBox="0 0 13 14" fill="none">
                 <rect x="2" y="1" width="9" height="12" rx="1.5"
@@ -3578,7 +3602,7 @@ function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
 
           {/* ── Support ───────────────────────────────────────────────────── */}
           <SettingsGroup label="Support">
-            <SettingsRow onPress={() => toast("How It Works guide coming soon")}
+            <SettingsRow onPress={onHowItWorks}
               iconBg="rgba(92,156,255,0.18)" label="How It Works"
               iconEl={<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <circle cx="7" cy="7" r="6" stroke="#5c9cff" strokeWidth="1.4"/>
@@ -3586,14 +3610,14 @@ function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
                   strokeLinecap="round"/>
               </svg>}
             />
-            <SettingsRow onPress={() => toast("Feedback form coming soon")}
-              iconBg="rgba(255,154,60,0.18)" label="Send Feedback"
+            <SettingsRow onPress={() => openExternal(LEGAL_URLS.support)}
+              iconBg="rgba(255,154,60,0.18)" label="Help & Support"
               iconEl={<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M1 1h12v9H8l-4 3V10H1V1z"
                   stroke="#ff9a3c" strokeWidth="1.5" strokeLinejoin="round"/>
               </svg>}
             />
-            <SettingsRow onPress={() => toast("Rate us on the App Store — coming soon")}
+            <SettingsRow onPress={() => toast("Thanks — rate Playbook when it is live on the App Store")}
               iconBg="rgba(92,156,255,0.18)" label="Rate Playbook" last
               iconEl={<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M7 1l1.8 3.6L13 5.3l-3 2.9.7 4.1L7 10.4 3.3 12.3l.7-4.1-3-2.9 4.2-.7z"
@@ -3705,7 +3729,19 @@ function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
                   Type <span style={{ color:C.red, fontWeight:600 }}>DELETE</span> to confirm
                 </div>
               </div>
-              <DeleteConfirmInput onConfirmed={onSignOut} onCancel={() => setDeleteStep(0)} />
+              <DeleteConfirmInput
+                busy={deleting}
+                onConfirmed={async () => {
+                  setDeleting(true);
+                  try {
+                    await onDeleteAccount();
+                  } finally {
+                    setDeleting(false);
+                    setDeleteStep(0);
+                  }
+                }}
+                onCancel={() => setDeleteStep(0)}
+              />
             </div>
           )}
 
@@ -3724,12 +3760,12 @@ function ProfileScreen({ onSignOut }: { onSignOut:()=>void }) {
 }
 
 // Separate component so it has its own state ─────────────────────────────────
-function DeleteConfirmInput({ onConfirmed, onCancel }:
-  { onConfirmed:()=>void; onCancel:()=>void }) {
+function DeleteConfirmInput({ onConfirmed, onCancel, busy }:
+  { onConfirmed:()=>void | Promise<void>; onCancel:()=>void; busy?: boolean }) {
   const { isDark } = useTheme();
   const T = th(isDark);
   const [val, setVal] = useState("");
-  const ready = val.trim().toUpperCase() === "DELETE";
+  const ready = val.trim().toUpperCase() === "DELETE" && !busy;
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
       <input
@@ -3737,19 +3773,20 @@ function DeleteConfirmInput({ onConfirmed, onCancel }:
         onChange={e => setVal(e.target.value)}
         placeholder="Type DELETE"
         autoCapitalize="none"
+        disabled={busy}
         style={{ background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
           border:`1px solid ${ready ? "rgba(255,77,77,0.5)" : T.glassBT}`,
           borderRadius:10, padding:"10px 14px", color:T.text,
           fontSize:14, outline:"none", textAlign:"center",
           letterSpacing:"0.06em" }}
       />
-      <button onClick={onConfirmed} disabled={!ready}
+      <button onClick={() => { void onConfirmed(); }} disabled={!ready}
         style={{ background: ready ? C.red : "rgba(255,77,77,0.2)",
           border:"none", borderRadius:10, padding:"11px",
           cursor: ready ? "pointer" : "default",
           color: ready ? "#fff" : "rgba(255,255,255,0.3)",
           fontSize:14, fontWeight:600, transition:"all .2s" }}>
-        Permanently Delete Account
+        {busy ? "Deleting…" : "Permanently Delete Account"}
       </button>
       <PressRow onClick={onCancel}>
         <div style={{ textAlign:"center", padding:"8px" }}>
@@ -5271,6 +5308,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
               </button>
               <span style={{ fontSize:11, color:STEEP.dove }}>·</span>
               <button type="button"
+                onClick={() => openExternal(LEGAL_URLS.terms)}
                 style={{ background:"none", border:"none", cursor:"pointer",
                   fontSize:11, color:STEEP.graphite, padding:6,
                   fontFamily:STEEP.sans, letterSpacing:"-0.005em" }}>
@@ -5278,6 +5316,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
               </button>
               <span style={{ fontSize:11, color:STEEP.dove }}>·</span>
               <button type="button"
+                onClick={() => openExternal(LEGAL_URLS.privacy)}
                 style={{ background:"none", border:"none", cursor:"pointer",
                   fontSize:11, color:STEEP.graphite, padding:6,
                   fontFamily:STEEP.sans, letterSpacing:"-0.005em" }}>
@@ -5393,7 +5432,9 @@ function AuthSheet({ title, onEmailPress, onClose, onDone }:
 
         {/* Sign in with Apple */}
         <button
-          onClick={() => { onDone(); }}
+          onClick={() => { /* sheet uses parent AuthScreen handler via custom event */ 
+            window.dispatchEvent(new CustomEvent("pb-request-apple-signin"));
+          }}
           style={{
             width:"100%", display:"flex", alignItems:"center", justifyContent:"center",
             gap:10, background:STEEP.ink, border:"none", borderRadius:999,
@@ -5413,11 +5454,11 @@ function AuthSheet({ title, onEmailPress, onClose, onDone }:
         <div style={{ textAlign:"center", fontSize:11,
           color:STEEP.dove, lineHeight:1.6, letterSpacing:"-0.009em" }}>
           By continuing you agree to Playbook's{" "}
-          <span onClick={() => window.open("https://apple.com/legal/internet-services/itunes/us/terms.html", "_blank")}
+          <span onClick={() => openExternal(LEGAL_URLS.terms)}
             style={{ color:STEEP.graphite, textDecoration:"underline", cursor:"pointer" }}>
             Terms of Service
           </span>{" "}and{" "}
-          <span onClick={() => window.open("https://apple.com/legal/privacy", "_blank")}
+          <span onClick={() => openExternal(LEGAL_URLS.privacy)}
             style={{ color:STEEP.graphite, textDecoration:"underline", cursor:"pointer" }}>
             Privacy Policy
           </span>
@@ -5427,6 +5468,150 @@ function AuthSheet({ title, onEmailPress, onClose, onDone }:
   );
 }
 
+/** Full-screen first screen after sharing: video + categorize into playbook. */
+function SharedClipIntakeOverlay({
+  play,
+  onSaved,
+  onSkip,
+}: {
+  play: UserPlayItem;
+  onSaved: (playId: string, categoryId: string, categoryName: string) => void;
+  onSkip: () => void;
+}) {
+  const [parentId, setParentId] = useState("");
+  const [subId, setSubId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const parents = CATEGORIES.filter(c => c.parentId === null);
+  const subs = parentId ? CATEGORIES.filter(c => c.parentId === parentId) : [];
+  const selectedId = subId || parentId;
+  const canSave = parentId !== "";
+  const embedUrl = officialEmbedUrl(play as FeedPlay);
+  const streamSrc = useTwitterAutoplay(play as FeedPlay, true);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  async function save() {
+    if (!canSave) return;
+    setSaving(true);
+    setErr(null);
+    const catName = CATEGORIES.find(c => c.id === selectedId)?.name || "Playbook";
+    // Preview category ids are local strings ("1","2",…). Edge function resolves
+    // category_name → user UUID (match or create) so categorized saves persist.
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedId);
+    const remote = await ingestPlayToAccount(
+      play.sourceUrl,
+      isUuid ? selectedId : null,
+      catName,
+      catName,
+    );
+    setSaving(false);
+    if (!remote.ok && remote.error !== "Not signed in") {
+      setErr(remote.error || "Couldn't save — try again.");
+      return;
+    }
+    onSaved(play.id, selectedId, catName);
+  }
+
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:200, background:"#000",
+      display:"flex", flexDirection:"column" }}>
+      <div style={{ flex:1, position:"relative", minHeight:0 }}>
+        <PlayMediaBackdrop play={play as FeedPlay} />
+        {streamSrc && (
+          <NativeClipVideo src={streamSrc} isActive={true} paused={false} videoRef={videoRef} />
+        )}
+        {!streamSrc && embedUrl && (
+          <OfficialEmbedPlayer embedUrl={embedUrl} isActive={true} />
+        )}
+        {!streamSrc && !embedUrl && (
+          <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center",
+            justifyContent:"center", color:"rgba(255,255,255,0.45)", fontSize:13,
+            padding:24, textAlign:"center", zIndex:1 }}>
+            Loading clip preview…
+          </div>
+        )}
+        <div style={{ position:"absolute", top:16, left:16, right:16,
+          display:"flex", justifyContent:"space-between", alignItems:"center", zIndex:3 }}>
+          <div style={{ fontSize:13, fontWeight:600, color:"#fff",
+            background:"rgba(0,0,0,0.45)", backdropFilter:"blur(10px)",
+            borderRadius:999, padding:"7px 12px" }}>
+            Shared clip — save to playbook
+          </div>
+          <button onClick={onSkip}
+            style={{ background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.2)",
+              color:"#fff", borderRadius:999, padding:"7px 12px", fontSize:13, cursor:"pointer" }}>
+            Later
+          </button>
+        </div>
+      </div>
+
+      <div style={{
+        background:"linear-gradient(180deg, rgba(0,0,0,0.2), #0d0d0f 30%)",
+        padding:"18px 18px calc(22px + env(safe-area-inset-bottom))",
+      }}>
+        <div style={{ fontSize:20, fontWeight:600, color:"#fff", marginBottom:6,
+          fontFamily:STEEP.serif }}>Where does this go?</div>
+        <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)", marginBottom:14 }}>
+          Pick a play type so it lands in your playbook.
+        </div>
+
+        <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:10 }}>
+          {parents.map(p => (
+            <button key={p.id} onClick={() => { setParentId(p.id); setSubId(""); }}
+              style={{
+                padding:"10px 14px", borderRadius:999, cursor:"pointer",
+                border: parentId === p.id ? "none" : "1px solid rgba(255,255,255,0.12)",
+                background: parentId === p.id ? C.accent : "rgba(255,255,255,0.08)",
+                color: parentId === p.id ? "#000" : "#fff",
+                fontSize:13, fontWeight:600,
+              }}>{p.name}</button>
+          ))}
+        </div>
+        {subs.length > 0 && (
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:14 }}>
+            {subs.map(s => (
+              <button key={s.id} onClick={() => setSubId(s.id)}
+                style={{
+                  padding:"8px 12px", borderRadius:999, cursor:"pointer",
+                  border: subId === s.id ? "none" : "1px solid rgba(255,255,255,0.12)",
+                  background: subId === s.id ? "#fff" : "rgba(255,255,255,0.06)",
+                  color: subId === s.id ? "#000" : "rgba(255,255,255,0.85)",
+                  fontSize:12, fontWeight:600,
+                }}>{s.name}</button>
+            ))}
+          </div>
+        )}
+        {err && <div style={{ color:"#ff9f43", fontSize:12, marginBottom:10 }}>{err}</div>}
+        <button onClick={save} disabled={!canSave || saving}
+          style={{
+            width:"100%", padding:"15px", borderRadius:999, border:"none",
+            background: canSave ? C.accent : "rgba(255,255,255,0.08)",
+            color: canSave ? "#000" : "rgba(255,255,255,0.35)",
+            fontSize:16, fontWeight:700, cursor: canSave ? "pointer" : "default",
+          }}>
+          {saving ? "Saving…" : "Save to Playbook"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+async function signInWithAppleFlow(onDone: () => void, setErr: (m: string | null) => void) {
+  setErr(null);
+  // WebView shell: native runs ASAuthorizationAppleID → pb-apple-session → signInWithIdToken.
+  if (NativeBridge.available) {
+    NativeBridge.signInWithApple();
+    return;
+  }
+  // Browser fallback (dev only) — needs Apple provider enabled in Supabase.
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "apple",
+    options: { redirectTo: window.location.origin },
+  });
+  if (error) setErr(error.message);
+  else onDone();
+}
+
 function AuthScreen({ onDone }: { onDone:()=>void }) {
   const [phase, setPhase]     = useState<"landing"|"onboarding"|"create"|"email">("landing");
   const [sheet, setSheet]     = useState<"none"|"open">("none");
@@ -5434,6 +5619,26 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
   const [pass, setPass]       = useState("");
   const [loading, setLoading] = useState(false);
   const [authErr, setAuthErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onApple = async (e: Event) => {
+      const detail = (e as CustomEvent).detail as AppleSessionDetail | undefined;
+      if (!detail) {
+        setAuthErr("Apple Sign In returned nothing from native.");
+        return;
+      }
+      const result = await applyAppleSession(detail);
+      if (!result.ok) setAuthErr(result.error);
+      else onDone();
+    };
+    const onRequest = () => { void signInWithAppleFlow(onDone, setAuthErr); };
+    window.addEventListener("pb-apple-session", onApple as EventListener);
+    window.addEventListener("pb-request-apple-signin", onRequest);
+    return () => {
+      window.removeEventListener("pb-apple-session", onApple as EventListener);
+      window.removeEventListener("pb-request-apple-signin", onRequest);
+    };
+  }, [onDone]);
 
   async function submitEmail() {
     if (!email || pass.length < 6) return;
@@ -5503,7 +5708,7 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
 
           <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
             {/* Apple */}
-            <button onClick={onDone}
+            <button onClick={() => { void signInWithAppleFlow(onDone, setAuthErr); }}
               style={{ width:"100%", display:"flex", alignItems:"center",
                 justifyContent:"center", gap:10, background:STEEP.ink,
                 border:"none", borderRadius:999, padding:"15px", cursor:"pointer" }}>
@@ -5514,6 +5719,9 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
               <span style={{ fontSize:16, fontWeight:500, color:"#fff",
                 letterSpacing:"-0.009em" }}>Continue with Apple</span>
             </button>
+            {authErr && (
+              <div style={{ fontSize:12, color:"#c0392b", textAlign:"center" }}>{authErr}</div>
+            )}
           </div>
         </div>
       </div>
@@ -5589,7 +5797,7 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
         background:`radial-gradient(circle, ${STEEP.apricotWash} 0%, transparent 70%)`,
         opacity:0.8, pointerEvents:"none" }} />
 
-      {/* Center: Playbook AI + tagline */}
+      {/* Center: Playbook + tagline */}
       <div style={{ flex:1, display:"flex", flexDirection:"column",
         alignItems:"center", justifyContent:"center", textAlign:"center",
         padding:"0 28px" }}>
@@ -5598,7 +5806,7 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
           fontFamily:STEEP.serif,
           letterSpacing:"-0.66px", lineHeight:1.1,
           marginBottom:16 }}>
-          Playbook AI
+          Playbook
         </div>
 
         <div style={{ fontSize:16, color:STEEP.ash, lineHeight:1.5,
@@ -5775,11 +5983,16 @@ export default function App() {
 
   // Real Supabase session gates the app. onAuthStateChange flips `authed`
   // on sign-in / sign-out and restores a persisted session on launch.
+  // Also sync JWT → native App Group for Share Extension best-effort ingest.
   useEffect(() => {
     if (skipAuth) return;
-    supabase.auth.getSession().then(({ data }) => setAuthed(!!data.session));
+    supabase.auth.getSession().then(({ data }) => {
+      setAuthed(!!data.session);
+      void syncAuthTokenToNative();
+    });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthed(!!session);
+      NativeBridge.syncAuthToken(session?.access_token ?? null);
     });
     return () => sub.subscription.unsubscribe();
   }, [skipAuth]);
@@ -5801,6 +6014,48 @@ export default function App() {
   // ── User-imported plays (persisted to localStorage) ───────────────────────
   const [userPlays, setUserPlays] = useState<UserPlayItem[]>(loadUserPlays);
   useEffect(() => { syncUserPlays(userPlays); }, [userPlays]);
+
+  // Merge durable Supabase plays into local library after sign-in.
+  useEffect(() => {
+    if (!authed || skipAuth) return;
+    let cancelled = false;
+    void (async () => {
+      const [rows, cats] = await Promise.all([fetchRemotePlays(), fetchRemoteCategories()]);
+      if (cancelled || !rows.length) return;
+      const nameById = new Map(cats.map(c => [c.id, c.name]));
+      const localIdByName = new Map(CATEGORIES.map(c => [c.name.toLowerCase(), c.id]));
+      setUserPlays(prev => {
+        const byUrl = new Set(prev.map(p => p.sourceUrl));
+        const extras: UserPlayItem[] = [];
+        for (const row of rows) {
+          if (!row.source_url || byUrl.has(row.source_url)) continue;
+          byUrl.add(row.source_url);
+          const platform = (row.source_platform === "twitter" || row.source_platform === "instagram"
+            || row.source_platform === "tiktok" || row.source_platform === "facebook")
+            ? row.source_platform
+            : detectPlatform(row.source_url);
+          const remoteName = row.category_id ? nameById.get(row.category_id) : undefined;
+          const localCatId = remoteName
+            ? (localIdByName.get(remoteName.toLowerCase()) || "1")
+            : "inbox";
+          extras.push({
+            id: `remote-${row.id}`,
+            categoryId: localCatId,
+            title: row.title || "Saved clip",
+            platform,
+            sourceUrl: row.source_url,
+            savedAt: remoteName || null,
+            liked: false,
+            views: 0,
+            addedAt: new Date(row.created_at),
+            gradient: ["#1a2440", "#0d0d0f"],
+          } as UserPlayItem);
+        }
+        return extras.length ? [...extras, ...prev] : prev;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [authed, skipAuth]);
   const addPlay = (p: UserPlayItem) => {
     USER_PLAYS = [p, ...USER_PLAYS];        // keep the module mirror current now
     setUserPlays(prev => [p, ...prev]);
@@ -5808,36 +6063,80 @@ export default function App() {
   // Merged, stable list = imports (newest first) + seeded FEED.
   const allPlaysList = useMemo(() => [...userPlays, ...FEED], [userPlays]);
 
-  // ── Clips categorized in the Share Extension (from the App Group) ─────────
-  // The native app pushes already-categorized clips via "pb-add-categorized".
-  // We add them to the feed/playbook and confirm so native can drop them.
+  // ── Clips from Share Extension via native bridge contract ─────────────────
+  // Native → web: pb-add-categorized + window.__pbPendingCategorized
+  // Bare URLs (no categoryId) → inbox → full-screen SharedClipIntakeOverlay.
   const ingestedShares = useRef<Set<string>>(new Set());
+  const [intakeQueue, setIntakeQueue] = useState<UserPlayItem[]>([]);
+
   useEffect(() => {
     const ingest = (items: unknown) => {
       if (!Array.isArray(items)) return;
       const done: string[] = [];
-      (items as { url?: string; categoryId?: string; categoryName?: string }[]).forEach(it => {
+      const fresh: UserPlayItem[] = [];
+      (items as PendingShareItem[]).forEach(it => {
         if (!it || typeof it.url !== "string" || ingestedShares.current.has(it.url)) return;
         ingestedShares.current.add(it.url);
-        if (typeof it.categoryId === "string" && it.categoryId) {
-          // Legacy path: already categorized in the extension.
+        if (typeof it.categoryId === "string" && it.categoryId && it.categoryId !== "inbox") {
           addPlay(makeCategorizedPlay(it.url, it.categoryId, it.categoryName));
         } else {
-          // New path: bare URL — show it uncategorized so the user sorts it in-app.
-          addPlay(makeUncategorizedPlay(it.url));
+          const play = makeUncategorizedPlay(it.url);
+          addPlay(play);
+          fresh.push(play);
+          void ingestPlayToAccount(it.url, null, "New shared clip");
         }
         done.push(it.url);
       });
-      if (done.length) NativeBridge.post({ type: "categorizedIngested", urls: done });
+      if (fresh.length) setIntakeQueue(q => [...q, ...fresh]);
+      if (done.length) NativeBridge.categorizedIngested(done);
     };
-    // Race-proof: pick up whatever native stashed before this listener mounted,
-    // then keep listening for live shares while the app is open.
-    ingest((window as any).__pbPendingCategorized);
-    const onCategorized = (e: Event) => ingest((e as CustomEvent).detail?.items);
+    ingest(window.__pbPendingCategorized);
+    const onCategorized = (e: Event) =>
+      ingest((e as CustomEvent<{ items?: PendingShareItem[] }>).detail?.items);
+    const pullPending = () => NativeBridge.requestPendingShares();
     window.addEventListener("pb-add-categorized", onCategorized as EventListener);
-    return () => window.removeEventListener("pb-add-categorized", onCategorized as EventListener);
+    // Share while backgrounded: re-pull when the WebView becomes visible again.
+    document.addEventListener("visibilitychange", pullPending);
+    window.addEventListener("pageshow", pullPending);
+    window.addEventListener("focus", pullPending);
+    pullPending();
+    const t = window.setTimeout(pullPending, 800);
+    return () => {
+      window.removeEventListener("pb-add-categorized", onCategorized as EventListener);
+      document.removeEventListener("visibilitychange", pullPending);
+      window.removeEventListener("pageshow", pullPending);
+      window.removeEventListener("focus", pullPending);
+      window.clearTimeout(t);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Also surface any inbox plays already in local storage (survived a prior share).
+  useEffect(() => {
+    if (!authed) return;
+    const pending = userPlays.filter(isInboxPlay);
+    if (pending.length && intakeQueue.length === 0) {
+      setIntakeQueue(pending);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed]);
+
+  // Dev/QA: ?shareTest=1 simulates a shared X clip → full-screen intake.
+  useEffect(() => {
+    if (!authed) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("shareTest") !== "1") return;
+    const url = params.get("url")
+      || "https://x.com/CoachDanCasey/status/1980441997854011558";
+    if (ingestedShares.current.has(url)) return;
+    ingestedShares.current.add(url);
+    const play = makeUncategorizedPlay(url);
+    addPlay(play);
+    setIntakeQueue(q => [play, ...q]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed]);
+
+  const activeIntake = authed ? intakeQueue[0] : null;
 
   // ── Streak state (persisted to localStorage) ──────────────────────────────
   const [streak, setStreak] = useState<StreakState>(loadStreak);
@@ -6070,12 +6369,28 @@ export default function App() {
                     : screen.id === "liked"
                     ? <LikedScreen navigate={navigate} />
                     : screen.id === "profile"
-                    ? <ProfileScreen onSignOut={() => setAuthed(false)} />
+                    ? <ProfileScreen
+                        onHowItWorks={() => navigate({ id: "share-ext" })}
+                        onSignOut={async () => {
+                          await signOutAccount();
+                          setUserPlays([]);
+                          setAuthed(false);
+                        }}
+                        onDeleteAccount={async () => {
+                          const result = await deleteAccount();
+                          if (!result.ok) {
+                            window.alert(result.error ?? "Could not delete account. Try again.");
+                            return;
+                          }
+                          setUserPlays([]);
+                          setAuthed(false);
+                        }}
+                      />
                     : screen.id === "share-ext"
                     ? <ShareExtPreview navigate={navigate} />
                     : null
                   }
-                  {tabId && (
+                  {tabId && !activeIntake && (
                     <TabBar active={screen.id} onTab={id => navigate({ id } as Screen)} />
                   )}
                 </div>
@@ -6083,6 +6398,21 @@ export default function App() {
           }
         </div>
       </PhoneFrame>
+      {activeIntake && (
+        <SharedClipIntakeOverlay
+          play={activeIntake}
+          onSkip={() => setIntakeQueue(q => q.slice(1))}
+          onSaved={(playId, categoryId, categoryName) => {
+            setUserPlays(prev => prev.map(p =>
+              p.id === playId
+                ? { ...p, categoryId, savedAt: categoryName, title: `${categoryName} clip` }
+                : p
+            ));
+            setIntakeQueue(q => q.slice(1));
+            recordSave();
+          }}
+        />
+      )}
     </IPhoneSimulator>
     {/* Streak milestone celebration modal (shown when 7/30/100/365 hit) */}
     {pendingMilestone && (

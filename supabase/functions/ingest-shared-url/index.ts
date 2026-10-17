@@ -16,6 +16,8 @@ type SourcePlatform =
 interface IngestRequest {
   source_url: string;
   category_id?: string;
+  /** When category_id is not a UUID (web preview ids), resolve/create by name. */
+  category_name?: string;
   title?: string;
 }
 
@@ -190,6 +192,86 @@ async function resolveLinkMetadata(
   return { title: "Saved link" };
 }
 
+
+
+/** Collapse common social URL variants so re-shares match the same play row. */
+function canonicalizeSourceUrl(raw: string): string {
+  const u = new URL(raw);
+  u.hash = "";
+  // Strip tracking params commonly added by share sheets.
+  for (const key of [...u.searchParams.keys()]) {
+    if (
+      key.startsWith("utm_") ||
+      key === "s" ||
+      key === "t" ||
+      key === "ref_src" ||
+      key === "ref_url" ||
+      key === "fbclid" ||
+      key === "igshid"
+    ) {
+      u.searchParams.delete(key);
+    }
+  }
+  let host = u.hostname.replace(/^www\./, "").toLowerCase();
+  if (host === "mobile.twitter.com" || host === "mobile.x.com" || host === "twitter.com") {
+    host = "x.com";
+  }
+  u.hostname = host;
+  // Drop trailing slash on path (except root).
+  if (u.pathname.length > 1 && u.pathname.endsWith("/")) {
+    u.pathname = u.pathname.replace(/\/+$/, "");
+  }
+  return u.toString();
+}
+
+async function resolveCategoryId(
+  admin: ReturnType<typeof createClient>,
+  userId: string,
+  categoryId: string | undefined,
+  categoryName: string | undefined,
+): Promise<string | null> {
+  const uuidRe =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (categoryId && uuidRe.test(categoryId)) return categoryId;
+
+  const name = (categoryName || "").trim();
+  if (!name) return null;
+
+  const { data: existing } = await admin
+    .from("categories")
+    .select("id, name")
+    .eq("user_id", userId);
+
+  const match = (existing ?? []).find(
+    (c: { id: string; name: string }) =>
+      c.name.toLowerCase() === name.toLowerCase(),
+  );
+  if (match) return match.id;
+
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48) || "category";
+
+  const { data: created, error } = await admin
+    .from("categories")
+    .insert({
+      user_id: userId,
+      name,
+      slug: `${slug}-${crypto.randomUUID().slice(0, 8)}`,
+      sort_order: 99,
+    })
+    .select("id")
+    .single();
+
+  if (error || !created) {
+    console.error("category create failed", error);
+    return null;
+  }
+  return created.id as string;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -229,7 +311,7 @@ Deno.serve(async (req) => {
 
     let normalizedUrl: string;
     try {
-      normalizedUrl = new URL(body.source_url).toString();
+      normalizedUrl = canonicalizeSourceUrl(body.source_url);
     } catch {
       return new Response(JSON.stringify({ error: "Invalid URL" }), {
         status: 400,
@@ -242,25 +324,102 @@ Deno.serve(async (req) => {
     const metadata = await resolveLinkMetadata(platform, normalizedUrl);
     const admin = createClient(supabaseUrl, serviceRoleKey);
 
-    const { data: play, error: insertError } = await admin
-      .from("plays")
-      .insert({
-        user_id: userId,
-        category_id: body.category_id ?? null,
-        source_url: normalizedUrl,
-        source_platform: platform,
-        title: body.title ?? metadata.title ?? null,
-        thumbnail_url: metadata.thumbnailUrl ?? null,
-        embed_url: metadata.embedUrl ?? null,
-        video_storage_path: null,
-        status: "ready",
-        error_message: null,
-      })
-      .select()
-      .single();
+    const resolvedCategoryId = await resolveCategoryId(
+      admin,
+      userId,
+      body.category_id,
+      body.category_name,
+    );
 
-    if (insertError || !play) {
-      throw insertError ?? new Error("Failed to create play");
+    // Idempotent: re-sharing the same URL updates metadata instead of duplicating.
+    // Never wipe an existing category/title when the caller omits them (Share Extension
+    // best-effort ingest often sends null category after the user already categorized).
+    const { data: existing } = await admin
+      .from("plays")
+      .select("id, category_id, title")
+      .eq("user_id", userId)
+      .eq("source_url", normalizedUrl)
+      .maybeSingle();
+
+    const baseFields: Record<string, unknown> = {
+      source_platform: platform,
+      thumbnail_url: metadata.thumbnailUrl ?? null,
+      embed_url: metadata.embedUrl ?? null,
+      video_storage_path: null,
+      status: "ready",
+      error_message: null,
+    };
+
+    let play;
+    if (existing?.id) {
+      const updateFields: Record<string, unknown> = { ...baseFields };
+      if (resolvedCategoryId) {
+        updateFields.category_id = resolvedCategoryId;
+      }
+      // Prefer explicit title from caller; otherwise keep existing; else oEmbed.
+      if (body.title) {
+        updateFields.title = body.title;
+      } else if (!existing.title && metadata.title) {
+        updateFields.title = metadata.title;
+      }
+      const { data: updated, error: updateError } = await admin
+        .from("plays")
+        .update(updateFields)
+        .eq("id", existing.id)
+        .select()
+        .single();
+      if (updateError || !updated) {
+        throw updateError ?? new Error("Failed to update play");
+      }
+      play = updated;
+    } else {
+      const { data: inserted, error: insertError } = await admin
+        .from("plays")
+        .insert({
+          user_id: userId,
+          source_url: normalizedUrl,
+          category_id: resolvedCategoryId,
+          title: body.title ?? metadata.title ?? null,
+          ...baseFields,
+        })
+        .select()
+        .single();
+      if (insertError) {
+        // Unique (user_id, source_url) race with a parallel share ingest — update winner.
+        const code = (insertError as { code?: string }).code;
+        if (code === "23505") {
+          const { data: raced } = await admin
+            .from("plays")
+            .select("id, category_id, title")
+            .eq("user_id", userId)
+            .eq("source_url", normalizedUrl)
+            .maybeSingle();
+          if (raced?.id) {
+            const updateFields: Record<string, unknown> = { ...baseFields };
+            if (resolvedCategoryId) updateFields.category_id = resolvedCategoryId;
+            if (body.title) updateFields.title = body.title;
+            else if (!raced.title && metadata.title) updateFields.title = metadata.title;
+            const { data: updated, error: updateError } = await admin
+              .from("plays")
+              .update(updateFields)
+              .eq("id", raced.id)
+              .select()
+              .single();
+            if (updateError || !updated) {
+              throw updateError ?? new Error("Failed to update play after conflict");
+            }
+            play = updated;
+          } else {
+            throw insertError;
+          }
+        } else {
+          throw insertError;
+        }
+      } else if (!inserted) {
+        throw new Error("Failed to create play");
+      } else {
+        play = inserted;
+      }
     }
 
     return new Response(JSON.stringify({ play }), {

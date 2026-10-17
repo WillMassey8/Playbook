@@ -1,10 +1,11 @@
 import Foundation
 
 enum AppConstants {
-    static let appGroupID          = "group.com.playbook.app"
-    static let pendingShareURLKey  = "pendingShareURL"
-    static let pendingUserTokenKey = "pendingUserToken"
-    static let playVideosBucket    = "play-videos"
+    static let appGroupID            = "group.com.playbook.app"
+    static let pendingShareURLKey    = "pendingShareURL"
+    static let pendingShareQueueKey  = "pendingShareURLQueue"
+    static let pendingUserTokenKey   = "pendingUserToken"
+    static let playVideosBucket      = "play-videos"
 }
 
 enum AppConfig {

@@ -41,7 +41,7 @@ struct AuthLandingView: View {
                         .font(.system(size: 52, weight: .semibold))
                         .foregroundStyle(Color.pbGreen)
 
-                    Text("Playbook AI")
+                    Text("Playbook")
                         .font(.system(size: 40, weight: .regular, design: .serif))
                         .foregroundStyle(.white)
 
@@ -64,6 +64,11 @@ struct AuthLandingView: View {
                         phase = .signIn
                     }
                     .buttonStyle(SecondaryButtonStyle())
+
+                    Text("Onboarding → Sign in with Apple → your playbook.")
+                        .font(.pbCaption)
+                        .foregroundStyle(.white.opacity(0.35))
+                        .multilineTextAlignment(.center)
                 }
                 .padding(.horizontal, Spacing.lg)
                 .padding(.bottom, Spacing.xxl)
