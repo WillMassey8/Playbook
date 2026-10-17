@@ -41,7 +41,7 @@ Vercel Root Directory must be `preview`. `preview/vercel.json` sets no-cache HTM
 ## 2) Supabase
 
 ```bash
-supabase db push
+supabase db push   # includes plays_user_id_source_url_uidx (share dedupe)
 supabase functions deploy ingest-shared-url
 supabase functions deploy resolve-playback-url
 supabase functions deploy delete-account
