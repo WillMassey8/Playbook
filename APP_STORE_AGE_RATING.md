@@ -21,6 +21,10 @@
 
 Expected rating: **4+** (or equivalent).
 
+## Made for Kids
+
+**No** — Playbook is for coaches / adults (not a Kids Category app).
+
 ## Content Rights
 
 - We do **not** claim ownership of third-party social videos.

@@ -22,7 +22,7 @@
 - Support: https://playbook-pink.vercel.app/support.html  
 - Export compliance: **No** (uses only exempt encryption / HTTPS)  
 - Review notes: `APP_STORE_REVIEW_NOTES.md`  
-- Listing: `APP_STORE_LISTING.md` · Age: `APP_STORE_AGE_RATING.md` · Shots: `APP_STORE_SCREENSHOTS.md`
+- Listing: `APP_STORE_LISTING.md` · Age: `APP_STORE_AGE_RATING.md` · Privacy labels: `APP_STORE_PRIVACY_LABELS.md` · Shots: `APP_STORE_SCREENSHOTS.md`
 
 ## Already green (do not redo)
 
@@ -32,11 +32,12 @@
 - Foreground re-pull for pending shares
 - Vercel CI on PR
 
-## Status snapshot (2026-10-17 01:30 UTC)
+## Status snapshot (2026-10-17 02:15 UTC)
 
 - Production: still `index-NwAGEV6c.js`, privacy/terms/support **404** → **Promote required**
 - Preview: green (`index-viaSOKDV.js`) — `./scripts/verify-submission.sh`
-- New migration: unique `(user_id, source_url)` + ingest conflict retry (run `supabase db push`)
-- App Group mismatch is the #1 silent share failure — read `ios/WebViewShell/APP_GROUP.md`
+- ASC privacy labels draft added (`APP_STORE_PRIVACY_LABELS.md`)
+- Unique source_url migration ready (`supabase db push`)
+- App Group mismatch = silent share failure — `ios/WebViewShell/APP_GROUP.md`
 - PR #5 CI: green
 - Remaining: Promote, Supabase db+functions, WebViewShell/TestFlight, ASC

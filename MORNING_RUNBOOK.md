@@ -71,7 +71,8 @@ Share from X → **Saved to Playbook ✓** → reopen → categorize → persist
 - Terms: https://playbook-pink.vercel.app/terms.html
 - Support: https://playbook-pink.vercel.app/support.html
 - Review notes: `APP_STORE_REVIEW_NOTES.md`
-- Age rating: `APP_STORE_AGE_RATING.md`
+- Age rating: `APP_STORE_AGE_RATING.md` (Made for Kids: **No**)
+- Privacy labels: `APP_STORE_PRIVACY_LABELS.md`
 - Screenshots: `APP_STORE_SCREENSHOTS.md`
 - Listing copy: `APP_STORE_LISTING.md`
 
