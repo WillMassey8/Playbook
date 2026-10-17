@@ -31,10 +31,11 @@
 - Privacy Manifest sample (`ios/WebViewShell/PrivacyInfo.xcprivacy`)
 - Vercel CI on PR
 
-## Status snapshot (2026-10-16 23:17 UTC)
+## Status snapshot (2026-10-17 00:05 UTC)
 
 - Production: still `index-NwAGEV6c.js`, privacy/terms/support **404** → **Promote required**
-- Preview: green (privacy/terms/support 200) — `./scripts/verify-submission.sh`
-- Share Extension: quiet `ShareViewController` only (removed dead `CategorizeShareView`)
+- Preview: green — `./scripts/verify-submission.sh` (re-Promote after latest web push)
+- Share return-from-background: web visibility + native `willEnterForeground` re-pull pending shares
+- Share Extension Privacy Manifest added
 - PR #5 CI: green
-- Agent code path: complete — remaining work is dashboard-only (Promote, Supabase deploy, WebViewShell/TestFlight, ASC)
+- Remaining: Promote, Supabase deploy, WebViewShell/TestFlight, ASC

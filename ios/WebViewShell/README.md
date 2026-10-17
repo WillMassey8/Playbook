@@ -8,7 +8,8 @@ Copy these files into the Desktop / Xcode WebView app that loads
 3. Register `WKScriptMessageHandler` name **`playbook`**
 4. Point `WKWebView` at production (or the PR preview URL while testing)
 5. Add **`PrivacyInfo.xcprivacy`** to the app target (required for App Store)
-6. Merge keys from `Info.plist.sample` (`ITSAppUsesNonExemptEncryption`, URL schemes, LSApplicationQueriesSchemes)
+6. Add Share Extension `PrivacyInfo.xcprivacy` too (App Group UserDefaults)
+7. Merge keys from `Info.plist.sample` (`ITSAppUsesNonExemptEncryption`, URL schemes, LSApplicationQueriesSchemes)
 
 Also copy `Playbook.entitlements.sample` → your target entitlements (Sign in with Apple + App Group).
 

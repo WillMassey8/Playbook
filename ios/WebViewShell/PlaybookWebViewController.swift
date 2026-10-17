@@ -55,11 +55,32 @@ final class PlaybookWebViewController: UIViewController, WKNavigationDelegate, W
         bridge.webView = webView
         bridge.presentingViewController = self
 
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(pullPendingShares),
+            name: UIApplication.willEnterForegroundNotification,
+            object: nil
+        )
+
         webView.load(URLRequest(url: startURL))
     }
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        pullPendingShares()
+    }
+
+    @objc private func pullPendingShares() {
+        // Share Extension may have enqueued URLs while we were backgrounded.
         bridge.injectPendingShares(SharedURLStore.peekPendingURLs())
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        pullPendingShares()
     }
 
     func webView(

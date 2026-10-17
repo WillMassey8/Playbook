@@ -6093,11 +6093,19 @@ export default function App() {
     ingest(window.__pbPendingCategorized);
     const onCategorized = (e: Event) =>
       ingest((e as CustomEvent<{ items?: PendingShareItem[] }>).detail?.items);
+    const pullPending = () => NativeBridge.requestPendingShares();
     window.addEventListener("pb-add-categorized", onCategorized as EventListener);
-    NativeBridge.requestPendingShares();
-    const t = window.setTimeout(() => NativeBridge.requestPendingShares(), 800);
+    // Share while backgrounded: re-pull when the WebView becomes visible again.
+    document.addEventListener("visibilitychange", pullPending);
+    window.addEventListener("pageshow", pullPending);
+    window.addEventListener("focus", pullPending);
+    pullPending();
+    const t = window.setTimeout(pullPending, 800);
     return () => {
       window.removeEventListener("pb-add-categorized", onCategorized as EventListener);
+      document.removeEventListener("visibilitychange", pullPending);
+      window.removeEventListener("pageshow", pullPending);
+      window.removeEventListener("focus", pullPending);
       window.clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
