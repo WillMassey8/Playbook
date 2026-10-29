@@ -743,14 +743,31 @@ function platformOriginalLabel(platform: string): string {
 function OfficialEmbedPlayer({
   embedUrl,
   isActive,
+  warm = false,
   onUnavailable,
 }: {
   embedUrl: string;
   isActive: boolean;
+  warm?: boolean;
   onUnavailable?: () => void;
 }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const isTikTok = /tiktok\.com\/player\//.test(embedUrl);
+  // In the iOS app, an injected script autoplays IG/FB embeds and signals
+  // "playing"; keep the frame invisible until then so no loading UI shows.
+  const nativeAutoplay = !isTikTok && NativeBridge.available;
+  const [embedPlaying, setEmbedPlaying] = useState(false);
+  useEffect(() => {
+    if (!nativeAutoplay) return;
+    const onMsg = (e: MessageEvent) => {
+      if (e.source !== frameRef.current?.contentWindow) return;
+      const st = (e.data as { pbEmbed?: string })?.pbEmbed;
+      if (st === "playing") setEmbedPlaying(true);
+      if (st === "unavailable") onUnavailable?.();
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [nativeAutoplay, onUnavailable]);
   useEffect(() => {
     if (!isActive || !isTikTok) return;
     const send = (type: string, value?: number) =>
@@ -772,7 +789,8 @@ function OfficialEmbedPlayer({
     const iv = window.setInterval(() => { send("mute"); send("play"); if (++n > 8) window.clearInterval(iv); }, 1200);
     return () => { window.removeEventListener("message", onMsg); window.clearInterval(iv); };
   }, [isActive, isTikTok, onUnavailable]);
-  if (!isActive) return null;
+  // TikTok is not preloaded: two live TikTok players trigger its "Watch on TikTok" gate.
+  if (!isActive && !(warm && nativeAutoplay)) return null;
   return (
     <iframe
       ref={frameRef}
@@ -790,9 +808,11 @@ function OfficialEmbedPlayer({
         border: "none",
         background: "#000",
         zIndex: 1,
-        // TikTok autoplays + loops via its player API, so taps go to our UI.
-        // IG/FB embeds may block autoplay; keep them tappable as a fallback.
-        pointerEvents: isTikTok ? "none" : "auto",
+        opacity: nativeAutoplay && !embedPlaying ? 0 : 1,
+        transition: "opacity .15s",
+        // TikTok autoplays via its player API and IG/FB via the app's injected
+        // script, so taps go to our UI. On the plain web, IG/FB stay tappable.
+        pointerEvents: isTikTok || nativeAutoplay ? "none" : "auto",
       }}
     />
   );
@@ -1450,7 +1470,12 @@ function FeedCard({ play, isActive, warm = false }:
         <OfficialEmbedPlayer
           embedUrl={embedUrl}
           isActive={isActive}
-          onUnavailable={() => setEmbedFailed(true)}
+          warm={warm}
+          onUnavailable={() => {
+            setEmbedFailed(true);
+            if (play.platform === "instagram" || play.platform === "facebook")
+              window.dispatchEvent(new CustomEvent("pb-feed-unavailable", { detail: play.id }));
+          }}
         />
       )}
 
@@ -1673,6 +1698,21 @@ function FeedScreen() {
     setFeedOrder(buildOrder());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plays]);
+  // Drop upcoming cards whose IG/FB embed can't play in-app (owner disabled
+  // embedding, photo post, deleted) so swipes never land on a dead card.
+  const activeIdxRef = useRef(0);
+  useEffect(() => { activeIdxRef.current = activeIdx; }, [activeIdx]);
+  useEffect(() => {
+    const onDead = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      setFeedOrder(order => {
+        const i = order.findIndex(p => p.id === id);
+        return i > activeIdxRef.current ? order.filter(p => p.id !== id) : order;
+      });
+    };
+    window.addEventListener("pb-feed-unavailable", onDead);
+    return () => window.removeEventListener("pb-feed-unavailable", onDead);
+  }, []);
 
   const THRESHOLD = 64; // px to trigger refresh
 
@@ -1795,7 +1835,7 @@ function FeedScreen() {
           <div key={play.id} style={{ height:"100%", scrollSnapAlign:"start",
             scrollSnapStop:"always", flexShrink:0 }}>
             <FeedCard play={play} isActive={activeIdx === i}
-              warm={i > activeIdx && i <= activeIdx + 2} />
+              warm={i >= activeIdx - 1 && i <= activeIdx + 2 && i !== activeIdx} />
           </div>
         ))}
       </div>
@@ -6136,7 +6176,9 @@ export default function App() {
   const allPlaysList = useMemo(() => [...userPlays, ...FEED], [userPlays]);
   const feedList = useMemo(() => {
     const seen = new Set<string>();
-    return [...userPlays, ...globalFeed, ...FEED].filter(p => {
+    // Only real, playable starter clips — placeholder sample URLs never play.
+    const starter = FEED.filter(p => !/CoachSample|\/p\/(ghi789|jkl012)/.test(p.sourceUrl));
+    return [...userPlays, ...globalFeed, ...starter].filter(p => {
       if (seen.has(p.sourceUrl)) return false;
       seen.add(p.sourceUrl);
       return true;
