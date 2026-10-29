@@ -83,7 +83,7 @@ function UpgradeSheet({ onClose }: { onClose: () => void }) {
           Keep scrolling the feed for free. Upgrade to save unlimited plays to your playbook.
         </div>
         <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-          <Row id="annual" name="Annual" price="$49.99/yr" sub="$0.96/week · save 81%" />
+          <Row id="annual" name="Annual" price="$49.99/year" sub="Unlimited saves · Best value · Save 81%" />
           <Row id="weekly" name="Weekly" price="$4.99/wk" sub="Unlimited saves · billed weekly" />
         </div>
         <button type="button" onClick={buy} disabled={busy} style={{ width:"100%", marginTop:16,
@@ -3125,8 +3125,6 @@ function SettingsGroup({ label, children }:
 }
 
 // ─── PROFILE SCREEN ───────────────────────────────────────────────────────────
-type PlanTier = "individual" | "team";
-const TEAM_SEAT_MAX = 6;
 
 /** Selectable pill, matching the category chips in the share extension. */
 function Chip({ label, color, active, onClick }: {
@@ -4953,89 +4951,6 @@ function PaywallPlanCard({
   );
 }
 
-// ─── REVERSE TRIAL SHEET ─────────────────────────────────────────────────────
-// Triggered when user tries to exit paywall — offers 14-day trial as a save
-function ReverseTrialSheet({ onAccept, onDecline }:
-  { onAccept:()=>void; onDecline:()=>void }) {
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    const t = setTimeout(() => setVisible(true), 10);
-    return () => clearTimeout(t);
-  }, []);
-
-  function close(action:()=>void) {
-    setVisible(false);
-    setTimeout(action, 280);
-  }
-
-  return (
-    <div
-      onClick={() => close(onDecline)}
-      style={{
-        position:"absolute", inset:0, zIndex:60,
-        background:`rgba(0,0,0,${visible ? 0.55 : 0})`,
-        transition:"background .3s ease",
-        display:"flex", flexDirection:"column", justifyContent:"flex-end",
-      }}>
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: STEEP.white,
-          borderRadius:"24px 24px 0 0",
-          padding:"0 24px 40px",
-          transform:`translateY(${visible ? 0 : 100}%)`,
-          transition:"transform .32s cubic-bezier(0.32,0.72,0,1)",
-          boxShadow:"0 -4px 40px rgba(0,0,0,0.18)",
-          position:"relative", overflow:"hidden",
-        }}>
-        <div style={{ position:"absolute", top:-40, right:-30, width:160, height:160,
-          borderRadius:"50%", pointerEvents:"none",
-          background:`radial-gradient(circle, ${STEEP.apricotWash} 0%, transparent 70%)`,
-          opacity:0.8 }} />
-
-        {/* Drag handle */}
-        <div style={{ display:"flex", justifyContent:"center", padding:"10px 0 18px" }}>
-          <div style={{ width:36, height:4, borderRadius:99, background:STEEP.dove }} />
-        </div>
-
-        <div style={{ position:"relative" }}>
-          <div style={{ fontSize:11, color:STEEP.rust, fontWeight:600,
-            letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>
-            One-time offer
-          </div>
-          <h2 style={{ fontFamily:STEEP.serif, fontSize:28, fontWeight:400,
-            color:STEEP.ink, letterSpacing:"-0.03em", lineHeight:1.2,
-            margin:0, marginBottom:12 }}>
-            Try PlaySave Pro free for 14 days
-          </h2>
-          <p style={{ fontSize:15, color:STEEP.graphite, letterSpacing:"-0.009em",
-            lineHeight:1.55, margin:0, marginBottom:24 }}>
-            No credit card. No commitment. See if it's worth it before you decide.
-          </p>
-
-          <div style={{ display:"flex", flexDirection:"column", gap:10,
-            marginBottom:24 }}>
-            <PreviewLine text="Unlimited clips for 14 days" />
-            <PreviewLine text="Full access to every Pro feature" />
-            <PreviewLine text="No card required to start" />
-          </div>
-
-          <GlowButton label="Start 14-day free trial" onPress={() => close(onAccept)} />
-
-          <button type="button"
-            onClick={() => close(onDecline)}
-            style={{ width:"100%", background:"none", border:"none",
-              padding:"16px 0 0", cursor:"pointer",
-              fontSize:14, color:STEEP.graphite, letterSpacing:"-0.009em",
-              fontFamily:STEEP.sans }}>
-            Continue with free (5 clips)
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()=>void }) {
   const [stepIdx, setStepIdx] = useState(0);
   const [answers, setAnswers] = useState<OnboardingAnswers>({
@@ -5043,7 +4958,6 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
     pain: null, volume: null,
     plan: "annual", // Annual default — research-backed for 2026
   });
-  const [showReverseTrial, setShowReverseTrial] = useState(false);
 
   const steps = onboardingSteps(answers.userType);
   const step = steps[stepIdx] ?? "who";
@@ -5109,13 +5023,6 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
     return "Continue";
   })();
 
-  const recommendTeam = answers.staff === "staff" || answers.staff === "large";
-  // Paywall toggle: Individual vs Team plans
-  const [planTab, setPlanTab] = useState<"individual" | "team">("individual");
-  function chooseTab(tab: "individual" | "team") {
-    setPlanTab(tab);
-    setAnswers(a => ({ ...a, plan: "annual" }));
-  }
 
   // Total steps shown to user = real steps - 1 (building screen hidden from count)
   const displaySteps = steps.filter(s => s !== "building");
@@ -5304,8 +5211,8 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                     selected={answers.plan === "annual"}
                     onClick={() => setAnswers(a => ({ ...a, plan:"annual" }))}
                     name="Annual"
-                    price="$49.99/yr"
-                    sublabel="Just $0.96/week · unlimited playbook saves"
+                    price="$49.99/year"
+                    sublabel="Unlimited playbook saves"
                     badge="Best value"
                     badgeBg={STEEP.rust}
                     savings="Save 81%"
@@ -5390,21 +5297,6 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
         </div>
       )}
 
-      {/* Reverse trial on paywall dismiss */}
-      {showReverseTrial && (
-        <ReverseTrialSheet
-          onAccept={() => {
-            setShowReverseTrial(false);
-            setAnswers(a => ({ ...a, plan:"annual" }));
-            onComplete();
-          }}
-          onDecline={() => {
-            setShowReverseTrial(false);
-            setAnswers(a => ({ ...a, plan:"free" }));
-            onComplete();
-          }}
-        />
-      )}
     </div>
   );
 }
