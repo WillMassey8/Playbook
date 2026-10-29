@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useContext, createContext, useMemo } from "react";
 import IPhoneSimulator from "./IPhoneSimulator";
 import { supabase } from "./lib/supabase";
-import { ingestPlayToAccount, fetchRemotePlays, fetchRemoteCategories } from "./lib/plays";
+import { ingestPlayToAccount, fetchRemotePlays, fetchRemoteCategories, fetchGlobalFeed } from "./lib/plays";
 import { canonicalizeSourceUrl } from "./lib/urls";
 import {
   deleteAccount,
@@ -35,6 +35,74 @@ function readIsPro(): boolean {
   if (typeof window === "undefined") return false;
   if ((window as any).__pbPro === true) return true;
   try { return localStorage.getItem("playbook.isPro") === "1"; } catch { return false; }
+}
+
+// ─── Free tier gate: 5 saves, then the upgrade paywall ───────────────────────
+const FREE_SAVE_LIMIT = 5;
+const SaveGateCtx = createContext<{ tryConsumeSave: () => boolean }>({ tryConsumeSave: () => true });
+function useSaveGate() { return useContext(SaveGateCtx); }
+
+function UpgradeSheet({ onClose }: { onClose: () => void }) {
+  const [plan, setPlan] = useState<"annual" | "monthly" | "team10">("annual");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const onResult = (e: Event) => {
+      setBusy(false);
+      if ((e as CustomEvent).detail?.success) onClose();
+    };
+    window.addEventListener("pb-purchase-result", onResult as EventListener);
+    return () => window.removeEventListener("pb-purchase-result", onResult as EventListener);
+  }, [onClose]);
+  const buy = () => {
+    if (!NativeBridge.available) { onClose(); return; }
+    setBusy(true);
+    NativeBridge.purchase(plan);
+  };
+  const Row = ({ id, name, price, sub }: { id: typeof plan; name: string; price: string; sub: string }) => (
+    <button type="button" onClick={() => setPlan(id)} style={{
+      width:"100%", textAlign:"left", cursor:"pointer", borderRadius:14, padding:"13px 15px",
+      background: plan === id ? STEEP.apricotWash : STEEP.white,
+      border:`1.5px solid ${plan === id ? STEEP.rust : "rgba(167,170,175,0.35)"}`,
+      display:"flex", justifyContent:"space-between", alignItems:"center", fontFamily:STEEP.sans }}>
+      <span><div style={{ fontSize:15, fontWeight:600, color:STEEP.ink }}>{name}</div>
+        <div style={{ fontSize:12, color:STEEP.graphite, marginTop:2 }}>{sub}</div></span>
+      <span style={{ fontSize:15, fontWeight:600, color:STEEP.ink }}>{price}</span>
+    </button>
+  );
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:400,
+      background:"rgba(0,0,0,0.55)", display:"flex", flexDirection:"column", justifyContent:"flex-end" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:STEEP.white,
+        borderRadius:"24px 24px 0 0", maxHeight:"92vh", overflowY:"auto",
+        padding:"22px 20px calc(22px + env(safe-area-inset-bottom))", fontFamily:STEEP.sans }}>
+        <div style={{ fontFamily:STEEP.serif, fontSize:24, color:STEEP.ink, marginBottom:6 }}>
+          You've used your 5 free saves
+        </div>
+        <div style={{ fontSize:14, color:STEEP.graphite, marginBottom:16 }}>
+          Keep scrolling the feed for free. Upgrade to save unlimited plays to your playbook.
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          <Row id="annual" name="Annual" price="$29.99/yr" sub="Unlimited saves · best value" />
+          <Row id="monthly" name="Monthly" price="$9.99/mo" sub="Unlimited saves" />
+          <Row id="team10" name="Team (10 coaches)" price="$79.99/mo" sub="Shared team playbook" />
+        </div>
+        <button type="button" onClick={buy} disabled={busy} style={{ width:"100%", marginTop:16,
+          padding:15, borderRadius:999, border:"none", background:STEEP.ink, color:"#fff",
+          fontSize:16, fontWeight:600, cursor:"pointer" }}>{busy ? "Opening App Store…" : "Upgrade"}</button>
+        <button type="button" onClick={onClose} style={{ width:"100%", background:"none", border:"none",
+          padding:"12px 0 4px", fontSize:14, color:STEEP.graphite, cursor:"pointer" }}>Not now</button>
+        <div style={{ display:"flex", justifyContent:"center", gap:14, fontSize:11 }}>
+          <button type="button" onClick={() => NativeBridge.restore()} style={{ background:"none", border:"none", color:STEEP.graphite, fontSize:11, cursor:"pointer" }}>Restore purchases</button>
+          <button type="button" onClick={() => openExternal(LEGAL_URLS.terms)} style={{ background:"none", border:"none", color:STEEP.graphite, fontSize:11, cursor:"pointer" }}>Terms</button>
+          <button type="button" onClick={() => openExternal(LEGAL_URLS.privacy)} style={{ background:"none", border:"none", color:STEEP.graphite, fontSize:11, cursor:"pointer" }}>Privacy</button>
+        </div>
+        <div style={{ fontSize:10.5, color:STEEP.graphite, textAlign:"center", lineHeight:1.45, marginTop:6 }}>
+          Subscriptions renew automatically at the price shown until canceled. Payment is charged
+          to your Apple ID. Cancel at least 24 hours before the period ends in Settings › Apple ID › Subscriptions.
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Theme context ────────────────────────────────────────────────────────────
@@ -361,16 +429,6 @@ const FEED = [
   { id:"p-new1", categoryId:"12", title:"Direct Snap Sweep – Fake Reverse",  platform:"twitter", sourceUrl:"https://x.com/CoachDanCasey/status/2069447298044620972", savedAt:null, liked:false, views:30500, addedAt: new Date("2026-06-23T15:47:00"), gradient:["#2a1a0d","#0d0d0f"] },
   { id:"p-new2", categoryId:"14", title:"Freeze Option – Under Center",     platform:"twitter", sourceUrl:"https://x.com/CoachDanCasey/status/2069095673417318780", savedAt:null, liked:false, views:65200, addedAt: new Date("2026-06-22T16:30:00"), gradient:["#2a180d","#0d0d0f"] },
   { id:"p1",  categoryId:"4",  title:"Screen Pass – Bubble Concept",        platform:"twitter",   sourceUrl:"https://x.com/CoachDanCasey/status/1980441997854011558", savedAt:"Screen Game", liked:true, views:1840, addedAt: new Date("2026-06-23"), gradient:["#1a2440","#0d0d0f"] },
-  { id:"p-tt1", categoryId:"3", title:"Mesh Concept – TikTok Install",     platform:"tiktok",    sourceUrl:"https://www.tiktok.com/@coachfilm/video/7123456789012345678", savedAt:null, liked:false, views:22100, addedAt: new Date("2026-06-21"), gradient:["#0d2a2a","#0d0d0f"] },
-  { id:"p-fb1", categoryId:"4", title:"Tunnel Screen – Facebook Reel",     platform:"facebook",  sourceUrl:"https://www.facebook.com/reel/123456789012345", savedAt:null, liked:false, views:8800, addedAt: new Date("2026-06-20"), gradient:["#0d1a2a","#0d0d0f"] },
-  { id:"p1b", categoryId:"3",  title:"Speed Out Rub – Trips Bunch",         platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/2",   savedAt:null,          liked:false, views: 540, addedAt: new Date("2026-06-14"), gradient:["#1a2840","#0d0d0f"] },
-  { id:"p1c", categoryId:"3",  title:"Mesh Concept – Shallow Cross",        platform:"instagram", sourceUrl:"https://www.instagram.com/reel/abc123xyz/",   savedAt:null,          liked:true,  views:2310, addedAt: new Date("2026-06-13"), gradient:["#1a2040","#0d0d0f"] },
-  { id:"p1d", categoryId:"3",  title:"Rub Route – Slot vs. Man Cover",      platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/4",   savedAt:"Rub Routes",  liked:false, views: 780, addedAt: new Date("2026-06-12"), gradient:["#162038","#0d0d0f"] },
-  { id:"p1e", categoryId:"3",  title:"Drive Concept – TE Drag",             platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/5",   savedAt:null,          liked:true,  views:3100, addedAt: new Date("2026-06-11"), gradient:["#1a2848","#0d0d0f"] },
-  { id:"p1f", categoryId:"3",  title:"Switch Release – Trips Stack",        platform:"instagram", sourceUrl:"https://www.instagram.com/p/def456/",   savedAt:null,          liked:false, views: 420, addedAt: new Date("2026-06-10"), gradient:["#14203c","#0d0d0f"] },
-  { id:"p1g", categoryId:"3",  title:"Snag Concept – Corner Flat Slant",    platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/7",   savedAt:null,          liked:true,  views:1200, addedAt: new Date("2026-06-09"), gradient:["#1a2444","#0d0d0f"] },
-  { id:"p1h", categoryId:"3",  title:"Rub Pick – Bunch Formation",          platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/8",   savedAt:"Rub Routes",  liked:false, views: 960, addedAt: new Date("2026-06-08"), gradient:["#182240","#0d0d0f"] },
-  { id:"p1i", categoryId:"3",  title:"Levels Concept – Hi-Lo Read",         platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/8b",  savedAt:null,          liked:true,  views: 670, addedAt: new Date("2026-06-07"), gradient:["#1a2038","#0d0d0f"] },
   { id:"p2",  categoryId:"4",  title:"Tunnel Screen to TE vs. Press",       platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/9",   savedAt:null,          liked:false, views:1550, addedAt: new Date("2026-06-14"), gradient:["#1a2440","#0d0d0f"] },
   { id:"p3",  categoryId:"6",  title:"Fade vs. Cover 2 – Back Pylon",       platform:"instagram", sourceUrl:"https://www.instagram.com/p/ghi789/",   savedAt:"Shot Plays",  liked:true,  views: 890, addedAt: new Date("2026-06-13"), gradient:["#1a2440","#0d0d0f"] },
   { id:"p4",  categoryId:"3",  title:"Speed Out Rub – Trips Bunch",         platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/11",  savedAt:null,          liked:false, views:2750, addedAt: new Date("2026-06-12"), gradient:["#1a2440","#0d0d0f"] },
@@ -379,12 +437,6 @@ const FEED = [
   { id:"p7",  categoryId:"4",  title:"Bubble Screen – Crack & Wrap",        platform:"instagram", sourceUrl:"https://www.instagram.com/p/jkl012/",   savedAt:null,          liked:false, views: 720, addedAt: new Date("2026-06-09"), gradient:["#1a2440","#0d0d0f"] },
   { id:"p8",  categoryId:"16", title:"Bubble RPO – TE flat, slot arc",      platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/15",  savedAt:null,          liked:true,  views:1430, addedAt: new Date("2026-06-08"), gradient:["#0d2a1a","#0d0d0f"] },
   { id:"p9",  categoryId:"10", title:"Power O with TE kick – goal line",    platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/16",  savedAt:"Gap Schemes",  liked:false, views: 610, addedAt: new Date("2026-06-07"), gradient:["#2a1a0d","#0d0d0f"] },
-  { id:"p10", categoryId:"20", title:"Flea Flicker – post vs. single high", platform:"instagram", sourceUrl:"https://www.instagram.com/p/mno345/",   savedAt:null,          liked:true,  views:4200, addedAt: new Date("2026-06-06"), gradient:["#2a0d2a","#0d0d0f"] },
-  { id:"p11", categoryId:"13", title:"QB Power Read – kick out EMOL",       platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/18",  savedAt:null,          liked:false, views: 980, addedAt: new Date("2026-06-05"), gradient:["#2a1a0d","#0d0d0f"] },
-  { id:"p12", categoryId:"5",  title:"PA Post Wheel – TE seam crosser",     platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/19",  savedAt:"Play Action", liked:true,  views:1760, addedAt: new Date("2026-06-04"), gradient:["#1a2440","#0d0d0f"] },
-  { id:"p13", categoryId:"18", title:"Peek RPO – ILB triangle read",        platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/20",  savedAt:null,          liked:false, views: 510, addedAt: new Date("2026-06-03"), gradient:["#0d2a1a","#0d0d0f"] },
-  { id:"p14", categoryId:"20", title:"WR Pass – motion across formation",   platform:"instagram", sourceUrl:"https://www.instagram.com/p/pqr678/",   savedAt:null,          liked:true,  views:2900, addedAt: new Date("2026-06-02"), gradient:["#2a0d2a","#0d0d0f"] },
-  { id:"p16", categoryId:"12", title:"Jet Sweep – unbalanced line look",    platform:"twitter",   sourceUrl:"https://x.com/CoachSample/status/22",  savedAt:null,          liked:false, views: 840, addedAt: new Date("2026-06-01"), gradient:["#2a1a0d","#0d0d0f"] },
 ];
 
 // ─── User-imported plays (persisted to localStorage) ──────────────────────────
@@ -459,7 +511,7 @@ function isInboxPlay(p: { categoryId: string; savedAt: string | null }): boolean
   return p.categoryId === "inbox" || (p.categoryId === "" && !p.savedAt);
 }
 
-const PlaysCtx = createContext<{ plays: UserPlayItem[]; addPlay: (p: UserPlayItem) => void }>({
+const PlaysCtx = createContext<{ plays: UserPlayItem[]; addPlay: (p: UserPlayItem) => void; feed?: UserPlayItem[] }>({
   plays: FEED, addPlay: () => {},
 });
 function usePlays() { return useContext(PlaysCtx); }
@@ -532,7 +584,9 @@ function pickMp4Variant(variants: Array<Record<string, unknown>>): string | null
 }
 
 function throughVideoProxy(url: string): string {
-  return `/tw-video?url=${encodeURIComponent(url)}`;
+  // Dev server relays video.twimg.com. In production (WKWebView/AVPlayer and
+  // browsers) the temporary CDN URL plays directly in <video>; nothing is stored.
+  return import.meta.env.DEV ? `/tw-video?url=${encodeURIComponent(url)}` : url;
 }
 
 const streamCache = new Map<string, string | null>();
@@ -608,20 +662,25 @@ function useTwitterAutoplay(
   return src;
 }
 
-/** Official embed URL for TikTok / IG / FB (and X fallback). */
+/** TikTok's official embed player: autoplay, loop, muted, no controls/play button. */
+function tiktokPlayerUrl(id: string): string {
+  return `https://www.tiktok.com/player/v1/${id}?autoplay=1&loop=1&force_muted=1`
+    + "&controls=0&progress_bar=0&play_button=0&volume_control=0&fullscreen_button=0"
+    + "&timestamp=0&music_info=0&description=0&rel=0&native_context_menu=0&closed_caption=0";
+}
+
+/** Official embed URL for TikTok / IG / FB. */
 function officialEmbedUrl(play: FeedPlay | null | undefined): string | null {
   if (!play) return null;
+  // X's embed player always needs a play tap, so X only plays via the muted
+  // temporary stream (useTwitterAutoplay); unavailable posts get "Open on X".
+  if (play.platform === "twitter" || extractTweetId(play.sourceUrl)) return null;
+
+  const tiktokId = extractTikTokVideoId(play.sourceUrl)
+    ?? (play.embedUrl ? extractTikTokVideoId(play.embedUrl) : null);
+  if (tiktokId) return tiktokPlayerUrl(tiktokId);
+
   if (play.embedUrl) return play.embedUrl;
-
-  const tweetId = extractTweetId(play.sourceUrl);
-  if (tweetId) {
-    return `https://twitter.com/i/videos/tweet/${tweetId}`;
-  }
-
-  const tiktokId = extractTikTokVideoId(play.sourceUrl);
-  if (tiktokId) {
-    return `https://www.tiktok.com/embed/v2/${tiktokId}?autoplay=1`;
-  }
 
   const igCode = extractInstagramShortcode(play.sourceUrl);
   if (igCode) {
@@ -690,9 +749,29 @@ function OfficialEmbedPlayer({
   isActive: boolean;
   onUnavailable?: () => void;
 }) {
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const isTikTok = /tiktok\.com\/player\//.test(embedUrl);
+  useEffect(() => {
+    if (!isActive || !isTikTok) return;
+    const send = (type: string, value?: number) =>
+      frameRef.current?.contentWindow?.postMessage(
+        { "x-tiktok-player": true, type, value }, "*");
+    const onMsg = (e: MessageEvent) => {
+      if (e.source !== frameRef.current?.contentWindow) return;
+      const d = e.data as { type?: string; value?: unknown } | null;
+      if (!d || typeof d !== "object") return;
+      if (d.type === "onPlayerReady") { send("mute"); send("play"); }
+      // loop=1 should handle this; restart defensively if the player stops.
+      if (d.type === "onStateChange" && (d.value === 0 || d.value === 2)) { send("seekTo", 0); send("play"); }
+      if (d.type === "onPlayerError") onUnavailable?.();
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [isActive, isTikTok, onUnavailable]);
   if (!isActive) return null;
   return (
     <iframe
+      ref={frameRef}
       title="Official platform embed"
       src={embedUrl}
       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -707,7 +786,9 @@ function OfficialEmbedPlayer({
         border: "none",
         background: "#000",
         zIndex: 1,
-        pointerEvents: "none", // don't require a play tap — autoplay handles it
+        // TikTok autoplays + loops via its player API, so taps go to our UI.
+        // IG/FB embeds may block autoplay; keep them tappable as a fallback.
+        pointerEvents: isTikTok ? "none" : "auto",
       }}
     />
   );
@@ -722,8 +803,31 @@ function NativeClipVideo({ src, isActive, paused, videoRef, warm = false }: {
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    if (isActive && !paused) v.play().catch(() => {});
-    else v.pause();
+    // React doesn't reliably emit the `muted` attribute; iOS requires it for autoplay.
+    v.muted = true; v.defaultMuted = true; v.loop = true; v.playsInline = true;
+    v.setAttribute("muted", ""); v.setAttribute("playsinline", "");
+    v.setAttribute("webkit-playsinline", "");
+    const shouldPlay = isActive && !paused;
+    const kick = () => { if (shouldPlay && v.paused) v.play().catch(() => {}); };
+    const onEnded = () => { if (shouldPlay) { v.currentTime = 0; kick(); } };
+    // iOS can pause inline video on its own (backgrounding, interruptions).
+    const onPause = () => { if (shouldPlay) window.setTimeout(kick, 200); };
+    const onVis = () => { if (document.visibilityState === "visible") kick(); };
+    if (shouldPlay) kick(); else v.pause();
+    v.addEventListener("canplay", kick);
+    v.addEventListener("loadeddata", kick);
+    v.addEventListener("ended", onEnded);
+    v.addEventListener("pause", onPause);
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("pageshow", kick);
+    return () => {
+      v.removeEventListener("canplay", kick);
+      v.removeEventListener("loadeddata", kick);
+      v.removeEventListener("ended", onEnded);
+      v.removeEventListener("pause", onPause);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("pageshow", kick);
+    };
   }, [isActive, paused, src, videoRef]);
 
   if (!isActive && !warm) return null;
@@ -734,6 +838,9 @@ function NativeClipVideo({ src, isActive, paused, videoRef, warm = false }: {
       src={src}
       loop muted playsInline
       autoPlay={isActive}
+      controls={false}
+      disablePictureInPicture
+      disableRemotePlayback
       preload="auto"
       style={{
         position:"absolute", inset:0, width:"100%", height:"100%",
@@ -834,6 +941,8 @@ function AddToPlaybookSheet({ play, onClose, onSaved }:
   const [subId,    setSubId]    = useState<string>("");
   const [saving, setSaving]     = useState(false);
   const [done,   setDone]       = useState(false);
+  const { addPlay } = usePlays();
+  const { tryConsumeSave } = useSaveGate();
 
   const parents = CATEGORIES.filter(c => c.parentId === null);
   const subs    = parentId ? CATEGORIES.filter(c => c.parentId === parentId) : [];
@@ -846,14 +955,19 @@ function AddToPlaybookSheet({ play, onClose, onSaved }:
     setSubId("");
   }
 
-  function save() {
+  async function save() {
     if (!canSave) return;
+    if (!tryConsumeSave()) { onClose(); return; }
     setSaving(true);
-    setTimeout(() => {
-      setDone(true);
-      const cat = CATEGORIES.find(c => c.id === selectedId);
-      setTimeout(() => { onSaved(cat?.name ?? "Playbook"); }, 800);
-    }, 900);
+    const cat = CATEGORIES.find(c => c.id === selectedId);
+    const catName = cat?.name ?? "Playbook";
+    // Persist to the coach's account (edge fn resolves category by name).
+    await ingestPlayToAccount(play.sourceUrl, null, play.title, catName);
+    if (!play.id.startsWith("user-") && !play.id.startsWith("remote-")) {
+      addPlay({ ...makeCategorizedPlay(play.sourceUrl, selectedId, catName), title: play.title });
+    }
+    setDone(true);
+    setTimeout(() => { onSaved(catName); }, 800);
   }
 
   const sheetBg   = isDark ? "#111114" : STEEP.white;
@@ -1301,7 +1415,7 @@ function FeedCard({ play, isActive, warm = false }:
   useEffect(() => {
     setStreamTimedOut(false);
     if (!isActive || autoplaySrc || play.platform !== "twitter") return;
-    const t = setTimeout(() => setStreamTimedOut(true), 4000);
+    const t = setTimeout(() => setStreamTimedOut(true), 7000);
     return () => clearTimeout(t);
   }, [isActive, autoplaySrc, play.platform]);
 
@@ -1390,7 +1504,7 @@ function FeedCard({ play, isActive, warm = false }:
 
       {/* Right-side action stack */}
       <div style={{ position:"absolute", right:14, bottom:210, display:"flex",
-        flexDirection:"column", alignItems:"center", gap:22 }}>
+        flexDirection:"column", alignItems:"center", gap:22, zIndex:4 }}>
 
         {/* Like */}
         <button onClick={e => { e.stopPropagation(); if (!liked) { recordSave(); trackSignal(play.id, "like"); } toggleLike(play.id); }}
@@ -1539,7 +1653,9 @@ function FeedScreen() {
   const pulling    = useRef(false);
 
   const { rerankFeed } = useAffinity();
-  const { plays } = usePlays();
+  const { plays: libraryPlays, feed } = usePlays();
+  // Shared feed = my clips + every coach's shared clips + demo clips.
+  const plays = feed ?? libraryPlays;
   // Personalized order, but always surface freshly-imported clips first so a
   // just-added link is immediately visible at the top of the feed.
   const buildOrder = () => {
@@ -3536,24 +3652,6 @@ function ProfileScreen({ onSignOut, onDeleteAccount, onHowItWorks }: {
               </div>
             </PressRow>
 
-            <div style={{ height:0.5, background:T.divider, marginLeft:58 }} />
-            <SettingsRow onPress={() => toast("Export Playbook coming soon")}
-              iconBg="rgba(66,214,214,0.18)" label="Export Playbook"
-              iconEl={<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M7 1v8M4 6l3 3 3-3" stroke="#42d6d6" strokeWidth="1.5"
-                  strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M1 10v2a1 1 0 001 1h10a1 1 0 001-1v-2"
-                  stroke="#42d6d6" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>}
-            />
-            <SettingsRow onPress={() => toast("Notification settings coming soon")}
-              iconBg="rgba(92,156,255,0.18)" label="Notifications" value="On" last
-              iconEl={<svg width="14" height="15" viewBox="0 0 14 15" fill="none">
-                <path d="M7 1a5 5 0 015 5v3l1.5 2H.5L2 9V6a5 5 0 015-5z"
-                  stroke="#5c9cff" strokeWidth="1.5" strokeLinejoin="round"/>
-                <path d="M5.5 13a1.5 1.5 0 003 0" stroke="#5c9cff" strokeWidth="1.5"/>
-              </svg>}
-            />
           </SettingsGroup>
 
           {/* ── Appearance ────────────────────────────────────────────────── */}
@@ -3617,8 +3715,11 @@ function ProfileScreen({ onSignOut, onDeleteAccount, onHowItWorks }: {
                   stroke="#ff9a3c" strokeWidth="1.5" strokeLinejoin="round"/>
               </svg>}
             />
-            <SettingsRow onPress={() => toast("Thanks — rate Playbook when it is live on the App Store")}
-              iconBg="rgba(92,156,255,0.18)" label="Rate Playbook" last
+            <SettingsRow onPress={() => {
+                if (NativeBridge.available) { NativeBridge.restore(); toast("Checking the App Store…"); }
+                else toast("Restore purchases from the iPhone app");
+              }}
+              iconBg="rgba(92,156,255,0.18)" label="Restore Purchases" last
               iconEl={<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M7 1l1.8 3.6L13 5.3l-3 2.9.7 4.1L7 10.4 3.3 12.3l.7-4.1-3-2.9 4.2-.7z"
                   stroke="#5c9cff" strokeWidth="1.5" strokeLinejoin="round"/>
@@ -5323,6 +5424,12 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                 Privacy
               </button>
             </div>
+            <div style={{ fontSize:10.5, color:STEEP.graphite, lineHeight:1.45,
+              textAlign:"center", padding:"0 6px", fontFamily:STEEP.sans }}>
+              Subscriptions renew automatically at the price shown until canceled.
+              Payment is charged to your Apple ID. Cancel at least 24 hours before the
+              period ends in Settings › Apple ID › Subscriptions.
+            </div>
           </OnboardingStepShell>
         )}
         </div>
@@ -5372,6 +5479,16 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
 function AuthSheet({ title, onEmailPress, onClose, onDone }:
   { title:string; onEmailPress:()=>void; onClose:()=>void; onDone:()=>void }) {
   const [visible, setVisible] = useState(false);
+  const [sheetErr, setSheetErr] = useState<string | null>(null);
+  useEffect(() => {
+    const onApple = (e: Event) => {
+      const d = (e as CustomEvent).detail as { error?: string } | undefined;
+      if (d?.error) setSheetErr(friendlyAuthError(d.error));
+    };
+    window.addEventListener("pb-apple-session", onApple);
+    window.addEventListener("pb-auth-error", ((e: CustomEvent) => setSheetErr(e.detail)) as EventListener);
+    return () => window.removeEventListener("pb-apple-session", onApple);
+  }, []);
 
   // Trigger slide-up on mount
   useEffect(() => {
@@ -5448,6 +5565,10 @@ function AuthSheet({ title, onEmailPress, onClose, onDone }:
             letterSpacing:"-0.009em" }}>Continue with Apple</span>
         </button>
 
+
+        {sheetErr && (
+          <div style={{ fontSize:12, color:"#c0392b", textAlign:"center", marginTop:-8 }}>{sheetErr}</div>
+        )}
         <div style={{ marginBottom:24 }} />
 
         {/* Legal */}
@@ -5485,13 +5606,15 @@ function SharedClipIntakeOverlay({
   const parents = CATEGORIES.filter(c => c.parentId === null);
   const subs = parentId ? CATEGORIES.filter(c => c.parentId === parentId) : [];
   const selectedId = subId || parentId;
-  const canSave = parentId !== "";
+  const canSave = parentId !== "" && (subs.length === 0 || subId !== "");
   const embedUrl = officialEmbedUrl(play as FeedPlay);
   const streamSrc = useTwitterAutoplay(play as FeedPlay, true);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  const { tryConsumeSave } = useSaveGate();
   async function save() {
     if (!canSave) return;
+    if (!tryConsumeSave()) return; // paywall shown; clip stays pending
     setSaving(true);
     setErr(null);
     const catName = CATEGORIES.find(c => c.id === selectedId)?.name || "Playbook";
@@ -5513,9 +5636,11 @@ function SharedClipIntakeOverlay({
   }
 
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:200, background:"#000",
-      display:"flex", flexDirection:"column" }}>
-      <div style={{ flex:1, position:"relative", minHeight:0 }}>
+    <div style={{ position:"fixed", inset:0, zIndex:200, background:"rgba(0,0,0,0.55)",
+      display:"flex", flexDirection:"column", justifyContent:"flex-end" }}>
+      {/* Half-screen bottom sheet: muted looping clip on top, questions below */}
+      <div style={{ height:"38vh", flex:"none", position:"relative",
+        borderRadius:"22px 22px 0 0", overflow:"hidden", background:"#000" }}>
         <PlayMediaBackdrop play={play as FeedPlay} />
         {streamSrc && (
           <NativeClipVideo src={streamSrc} isActive={true} paused={false} videoRef={videoRef} />
@@ -5535,13 +5660,9 @@ function SharedClipIntakeOverlay({
           <div style={{ fontSize:13, fontWeight:600, color:"#fff",
             background:"rgba(0,0,0,0.45)", backdropFilter:"blur(10px)",
             borderRadius:999, padding:"7px 12px" }}>
-            Shared clip — save to playbook
+            New clip — categorize it
           </div>
-          <button onClick={onSkip}
-            style={{ background:"rgba(0,0,0,0.45)", border:"1px solid rgba(255,255,255,0.2)",
-              color:"#fff", borderRadius:999, padding:"7px 12px", fontSize:13, cursor:"pointer" }}>
-            Later
-          </button>
+          {/* Categorizing is mandatory — no skip. */}
         </div>
       </div>
 
@@ -5596,6 +5717,16 @@ function SharedClipIntakeOverlay({
   );
 }
 
+function friendlyAuthError(msg: string): string {
+  if (/provider is not enabled|unsupported provider/i.test(msg))
+    return "Sign in with Apple isn't available right now. Please try again shortly.";
+  if (/email not confirmed/i.test(msg))
+    return "Confirm your email first (check your inbox), then sign in.";
+  if (/invalid login credentials/i.test(msg))
+    return "That email and password don't match. Try again.";
+  return msg;
+}
+
 async function signInWithAppleFlow(onDone: () => void, setErr: (m: string | null) => void) {
   setErr(null);
   // WebView shell: native runs ASAuthorizationAppleID → pb-apple-session → signInWithIdToken.
@@ -5608,7 +5739,7 @@ async function signInWithAppleFlow(onDone: () => void, setErr: (m: string | null
     provider: "apple",
     options: { redirectTo: window.location.origin },
   });
-  if (error) setErr(error.message);
+  if (error) setErr(friendlyAuthError(error.message));
   else onDone();
 }
 
@@ -5619,6 +5750,7 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
   const [pass, setPass]       = useState("");
   const [loading, setLoading] = useState(false);
   const [authErr, setAuthErr] = useState<string | null>(null);
+  const [emailBack, setEmailBack] = useState<"create" | "landing">("create");
 
   useEffect(() => {
     const onApple = async (e: Event) => {
@@ -5628,7 +5760,10 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
         return;
       }
       const result = await applyAppleSession(detail);
-      if (!result.ok) setAuthErr(result.error);
+      if (!result.ok) {
+        setAuthErr(friendlyAuthError(result.error));
+        window.dispatchEvent(new CustomEvent("pb-auth-error", { detail: friendlyAuthError(result.error) }));
+      }
       else onDone();
     };
     const onRequest = () => { void signInWithAppleFlow(onDone, setAuthErr); };
@@ -5641,7 +5776,8 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
   }, [onDone]);
 
   async function submitEmail() {
-    if (!email || pass.length < 6) return;
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setAuthErr("Enter a valid email address."); return; }
+    if (pass.length < 6) { setAuthErr("Password needs at least 6 characters."); return; }
     setLoading(true);
     setAuthErr(null);
     // Try to sign in; if the account doesn't exist yet, create it.
@@ -5651,19 +5787,27 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
       onDone();
       return;
     }
-    const signUp = await supabase.auth.signUp({ email, password: pass });
+    if (signIn.error && /email not confirmed/i.test(signIn.error.message)) {
+      setLoading(false);
+      setAuthErr(friendlyAuthError(signIn.error.message));
+      return;
+    }
+    const signUp = await supabase.auth.signUp({
+      email, password: pass,
+      options: { emailRedirectTo: "https://playbook-pink.vercel.app" },
+    });
     setLoading(false);
     if (signUp.error) {
       // If sign-up fails because the user exists, the original sign-in error
       // (wrong password) is the useful message.
-      setAuthErr(signIn.error?.message ?? signUp.error.message);
+      setAuthErr(friendlyAuthError(signIn.error?.message ?? signUp.error.message));
       return;
     }
     if (signUp.data.session) {
       onDone();
     } else {
       // Email confirmation is on — no session until the link is clicked.
-      setAuthErr("Check your email to confirm your account, then sign in.");
+      setAuthErr("Account created. Check your email for a confirmation link, then come back and sign in.");
     }
   }
 
@@ -5735,7 +5879,7 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
         height:"100%", display:"flex", flexDirection:"column",
         background: STEEP.white,
       }}>
-        <button onClick={() => setPhase("create")}
+        <button onClick={() => { setAuthErr(null); setPhase(emailBack); }}
           style={{ background:"none", border:"none", cursor:"pointer",
             padding:"calc(18px + var(--pb-safe-top, env(safe-area-inset-top))) 20px 8px", display:"flex", alignItems:"center",
             gap:6, color:STEEP.graphite, fontSize:13, alignSelf:"flex-start" }}>
@@ -5753,17 +5897,19 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
               Continue with email
             </div>
             <div style={{ fontSize:14, color:STEEP.graphite, letterSpacing:"-0.009em" }}>
-              Create your account to save your playbook
+              Sign in, or create an account with a new email
             </div>
           </div>
           <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:20 }}>
-            <input placeholder="Email address" value={email}
+            <input placeholder="Email address" value={email} type="email"
+              autoComplete="email" autoCapitalize="none" autoCorrect="off" inputMode="email"
               onChange={e => setEmail(e.target.value)}
               style={{ background:STEEP.fog, border:`1px solid ${STEEP.dove}`,
                 borderRadius:16, padding:"15px 16px",
                 color:STEEP.ink, fontSize:15, outline:"none",
                 letterSpacing:"-0.009em" }} />
             <input placeholder="Password (6+ chars)" type="password" value={pass}
+              autoComplete="current-password"
               onChange={e => setPass(e.target.value)}
               style={{ background:STEEP.fog, border:`1px solid ${STEEP.dove}`,
                 borderRadius:16, padding:"15px 16px",
@@ -5838,7 +5984,7 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
         <AuthSheet
           title="Sign In"
           onClose={() => setSheet("none")}
-          onEmailPress={() => { setSheet("none"); setPhase("email"); }}
+          onEmailPress={() => { setSheet("none"); setEmailBack("landing"); setPhase("email"); }}
           onDone={onDone}
         />
       )}
@@ -5984,6 +6130,14 @@ export default function App() {
   // Real Supabase session gates the app. onAuthStateChange flips `authed`
   // on sign-in / sign-out and restores a persisted session on launch.
   // Also sync JWT → native App Group for Share Extension best-effort ingest.
+  // Dev-only QA login (stripped from production builds): ?qaLogin=email:password
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const qa = new URLSearchParams(window.location.search).get("qaLogin");
+    if (!qa) return;
+    const [email, password] = qa.split(":");
+    void supabase.auth.signInWithPassword({ email, password });
+  }, []);
   useEffect(() => {
     if (skipAuth) return;
     supabase.auth.getSession().then(({ data }) => {
@@ -6056,12 +6210,60 @@ export default function App() {
     })();
     return () => { cancelled = true; };
   }, [authed, skipAuth]);
+  // ── Free-tier save gate ───────────────────────────────────────────────────
+  const [isPro, setIsPro] = useState<boolean>(readIsPro);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  useEffect(() => {
+    const onEnt = (e: Event) => setIsPro(!!(e as CustomEvent).detail?.isPro);
+    window.addEventListener("pb-entitlement", onEnt as EventListener);
+    return () => window.removeEventListener("pb-entitlement", onEnt as EventListener);
+  }, []);
+  const savedCount = userPlays.filter(p => !isInboxPlay(p)).length;
+  const tryConsumeSave = () => {
+    if (isPro || savedCount < FREE_SAVE_LIMIT) return true;
+    setShowUpgrade(true);
+    return false;
+  };
+
+  // ── Shared feed: clips every coach has saved (feed_plays RPC) ──────────────
+  const [globalFeed, setGlobalFeed] = useState<UserPlayItem[]>([]);
+  const loadFeed = async () => {
+    const rows = await fetchGlobalFeed(150);
+    const idByName = new Map(CATEGORIES.map(c => [c.name.toLowerCase(), c.id]));
+    setGlobalFeed(rows.filter(r => r.source_url).map(r => ({
+      id: `global-${r.id}`,
+      categoryId: (r.category_name && idByName.get(r.category_name.toLowerCase())) || "1",
+      title: r.title && r.title !== "New shared clip" ? r.title : (r.category_name ? `${r.category_name} clip` : "Shared clip"),
+      platform: (["twitter","instagram","tiktok","facebook"].includes(r.source_platform ?? "")
+        ? r.source_platform : detectPlatform(r.source_url)) as SocialPlatform,
+      sourceUrl: r.source_url,
+      savedAt: null,
+      liked: false,
+      views: 0,
+      addedAt: new Date(r.created_at),
+      gradient: ["#1a2440", "#0d0d0f"],
+      ...(r.thumbnail_url ? { thumbnailUrl: r.thumbnail_url } : {}),
+    } as UserPlayItem)));
+  };
+  useEffect(() => {
+    if (!authed || skipAuth) return;
+    void loadFeed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed, skipAuth]);
   const addPlay = (p: UserPlayItem) => {
     USER_PLAYS = [p, ...USER_PLAYS];        // keep the module mirror current now
     setUserPlays(prev => [p, ...prev]);
   };
   // Merged, stable list = imports (newest first) + seeded FEED.
   const allPlaysList = useMemo(() => [...userPlays, ...FEED], [userPlays]);
+  const feedList = useMemo(() => {
+    const seen = new Set<string>();
+    return [...userPlays, ...globalFeed, ...FEED].filter(p => {
+      if (seen.has(p.sourceUrl)) return false;
+      seen.add(p.sourceUrl);
+      return true;
+    });
+  }, [userPlays, globalFeed]);
 
   // ── Clips from Share Extension via native bridge contract ─────────────────
   // Native → web: pb-add-categorized + window.__pbPendingCategorized
@@ -6070,29 +6272,37 @@ export default function App() {
   const [intakeQueue, setIntakeQueue] = useState<UserPlayItem[]>([]);
 
   useEffect(() => {
-    const ingest = (items: unknown) => {
+    const ingest = async (items: unknown) => {
       if (!Array.isArray(items)) return;
+      // Not signed in yet: leave shares in the App Group; re-pulled after login.
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess.session) return;
       const done: string[] = [];
       const fresh: UserPlayItem[] = [];
-      (items as PendingShareItem[]).forEach(it => {
-        if (!it || typeof it.url !== "string" || ingestedShares.current.has(it.url)) return;
+      for (const it of items as PendingShareItem[]) {
+        if (!it || typeof it.url !== "string" || ingestedShares.current.has(it.url)) continue;
         ingestedShares.current.add(it.url);
-        if (typeof it.categoryId === "string" && it.categoryId && it.categoryId !== "inbox") {
-          addPlay(makeCategorizedPlay(it.url, it.categoryId, it.categoryName));
+        const categorized = typeof it.categoryId === "string" && it.categoryId && it.categoryId !== "inbox";
+        // Save to the coach's account right away (shows in shared feed);
+        // categorization below updates the same row.
+        const res = await ingestPlayToAccount(it.url, null,
+          categorized ? null : "New shared clip", categorized ? it.categoryName ?? null : null);
+        if (!res.ok) { ingestedShares.current.delete(it.url); continue; }
+        if (categorized) {
+          addPlay(makeCategorizedPlay(it.url, it.categoryId!, it.categoryName));
         } else {
           const play = makeUncategorizedPlay(it.url);
           addPlay(play);
           fresh.push(play);
-          void ingestPlayToAccount(it.url, null, "New shared clip");
         }
         done.push(it.url);
-      });
+      }
       if (fresh.length) setIntakeQueue(q => [...q, ...fresh]);
-      if (done.length) NativeBridge.categorizedIngested(done);
+      if (done.length) { NativeBridge.categorizedIngested(done); void loadFeed(); }
     };
-    ingest(window.__pbPendingCategorized);
+    void ingest(window.__pbPendingCategorized);
     const onCategorized = (e: Event) =>
-      ingest((e as CustomEvent<{ items?: PendingShareItem[] }>).detail?.items);
+      void ingest((e as CustomEvent<{ items?: PendingShareItem[] }>).detail?.items);
     const pullPending = () => NativeBridge.requestPendingShares();
     window.addEventListener("pb-add-categorized", onCategorized as EventListener);
     // Share while backgrounded: re-pull when the WebView becomes visible again.
@@ -6110,6 +6320,11 @@ export default function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // After sign-in, ask native for shares that arrived while logged out.
+  useEffect(() => {
+    if (authed && !skipAuth) NativeBridge.requestPendingShares();
+  }, [authed, skipAuth]);
 
   // Also surface any inbox plays already in local storage (survived a prior share).
   useEffect(() => {
@@ -6343,7 +6558,8 @@ export default function App() {
     <AffinityCtx.Provider value={{
       affinity, track: trackSignal, rerankFeed, topCategories, suggestSimilarPlays
     }}>
-    <PlaysCtx.Provider value={{ plays: allPlaysList, addPlay }}>
+    <PlaysCtx.Provider value={{ plays: allPlaysList, addPlay, feed: feedList }}>
+    <SaveGateCtx.Provider value={{ tryConsumeSave }}>
     <ToastProvider>
     <IPhoneSimulator lightStatusBar={isDark || screen.id === "feed" || screen.id === "clip"}>
       <PhoneFrame>
@@ -6410,6 +6626,7 @@ export default function App() {
             ));
             setIntakeQueue(q => q.slice(1));
             recordSave();
+            void loadFeed();
           }}
         />
       )}
@@ -6422,7 +6639,9 @@ export default function App() {
       />
     )}
 
+    {showUpgrade && <UpgradeSheet onClose={() => setShowUpgrade(false)} />}
     </ToastProvider>
+    </SaveGateCtx.Provider>
     </PlaysCtx.Provider>
     </AffinityCtx.Provider>
     </StreakCtx.Provider>

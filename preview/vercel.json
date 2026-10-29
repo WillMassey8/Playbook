@@ -70,6 +70,10 @@
     {
       "source": "/support",
       "destination": "/support.html"
+    },
+    {
+      "source": "/tw-syndication/:path*",
+      "destination": "https://cdn.syndication.twimg.com/:path*"
     }
   ]
 }

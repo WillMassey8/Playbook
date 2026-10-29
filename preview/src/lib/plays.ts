@@ -70,3 +70,23 @@ export async function fetchRemoteCategories(): Promise<RemoteCategoryRow[]> {
   if (error || !data) return [];
   return data as RemoteCategoryRow[];
 }
+
+export type FeedPlayRow = {
+  id: string;
+  source_url: string;
+  source_platform: string | null;
+  title: string | null;
+  thumbnail_url: string | null;
+  embed_url: string | null;
+  category_name: string | null;
+  created_at: string;
+};
+
+/** Shared feed: every coach's saved clips (de-duped, no user ids). */
+export async function fetchGlobalFeed(limit = 100): Promise<FeedPlayRow[]> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) return [];
+  const { data, error } = await supabase.rpc("feed_plays", { max_rows: limit });
+  if (error || !data) return [];
+  return data as FeedPlayRow[];
+}
