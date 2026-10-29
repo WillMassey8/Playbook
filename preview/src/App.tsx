@@ -1263,7 +1263,7 @@ function ClipShareSheet({ play, onClose }: { play: typeof FEED[0]; onClose: () =
         </svg>
       ),
       label: "Report Clip",
-      action: onClose,
+      action: () => { window.open("mailto:admin@noshotapp.io?subject=Report%20clip", "_blank"); onClose(); },
       danger: true,
     },
   ];
