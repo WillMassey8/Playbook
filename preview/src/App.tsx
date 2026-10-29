@@ -765,7 +765,11 @@ function OfficialEmbedPlayer({
       if (d.type === "onPlayerError") onUnavailable?.();
     };
     window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
+    // Also nudge mute+play for the first seconds in case the ready event is missed
+    // (WKWebView sometimes needs an explicit play after load).
+    let n = 0;
+    const iv = window.setInterval(() => { send("mute"); send("play"); if (++n > 8) window.clearInterval(iv); }, 1200);
+    return () => { window.removeEventListener("message", onMsg); window.clearInterval(iv); };
   }, [isActive, isTikTok, onUnavailable]);
   if (!isActive) return null;
   return (
