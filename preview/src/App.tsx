@@ -43,7 +43,7 @@ const SaveGateCtx = createContext<{ tryConsumeSave: () => boolean; isPro?: boole
 function useSaveGate() { return useContext(SaveGateCtx); }
 
 function UpgradeSheet({ onClose }: { onClose: () => void }) {
-  const [plan, setPlan] = useState<"annual" | "monthly">("annual");
+  const [plan, setPlan] = useState<"annual" | "weekly">("annual");
   const [busy, setBusy] = useState(false);
   const { savedCount = 0 } = useSaveGate();
   useEffect(() => {
@@ -83,8 +83,8 @@ function UpgradeSheet({ onClose }: { onClose: () => void }) {
           Keep scrolling the feed for free. Upgrade to save unlimited plays to your playbook.
         </div>
         <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-          <Row id="annual" name="Annual" price="$29.99/yr" sub="Unlimited saves · best value" />
-          <Row id="monthly" name="Monthly" price="$9.99/mo" sub="Unlimited saves" />
+          <Row id="annual" name="Annual" price="$49.99/yr" sub="$0.96/week · save 81%" />
+          <Row id="weekly" name="Weekly" price="$4.99/wk" sub="Unlimited saves · billed weekly" />
         </div>
         <button type="button" onClick={buy} disabled={busy} style={{ width:"100%", marginTop:16,
           padding:15, borderRadius:999, border:"none", background:STEEP.ink, color:"#fff",
@@ -1302,7 +1302,7 @@ function ClipShareSheet({ play, onClose }: { play: typeof FEED[0]; onClose: () =
               overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
               {play.title}
             </div>
-            <div style={{ fontSize:12, color: T.textFaint }}>Playbook</div>
+            <div style={{ fontSize:12, color: T.textFaint }}>PlaySave</div>
           </div>
         </div>
 
@@ -3708,7 +3708,7 @@ function ProfileScreen({ onSignOut, onDeleteAccount, onHowItWorks }: {
             }}>
               <div style={{ padding:"14px 16px 6px", textAlign:"center" }}>
                 <div style={{ fontSize:13, color:T.textSec, marginBottom:10 }}>
-                  Sign out of Playbook?
+                  Sign out of PlaySave?
                 </div>
                 <button onClick={onSignOut} style={{ width:"100%", background:"none",
                   border:"none", padding:"9px", cursor:"pointer",
@@ -3805,7 +3805,7 @@ function ProfileScreen({ onSignOut, onDeleteAccount, onHowItWorks }: {
           )}
 
           <div style={{ textAlign:"center", padding:"28px 0 8px" }}>
-            <div style={{ fontSize:12, color:T.textFaint }}>Playbook 1.0.0</div>
+            <div style={{ fontSize:12, color:T.textFaint }}>PlaySave 1.0.0</div>
           </div>
 
         </div>
@@ -4121,7 +4121,7 @@ function MilestoneModal({ count, onClose }: { count:number; onClose:()=>void }) 
   const subtitle = count === 7 ? "You just hit a 7-day streak. This is where it gets easier."
     : count === 30 ? "A month of building your playbook. The habit is real now."
     : count === 100 ? "100 days. Most coaches never make it here."
-    : "A full year of Playbook. You're in rare company.";
+    : "A full year of PlaySave. You're in rare company.";
 
   function close() {
     setVisible(false);
@@ -4334,7 +4334,7 @@ function ShareCardModal({ play, onClose }: {
     ctx.fillStyle = STEEP.ink;
     ctx.font = "500 34px 'Inter', system-ui, sans-serif";
     ctx.textBaseline = "top";
-    ctx.fillText("Playbook", 80 + 108, attrY + 22);
+    ctx.fillText("PlaySave", 80 + 108, attrY + 22);
     ctx.fillStyle = STEEP.graphite;
     ctx.font = "400 22px 'Inter', system-ui, sans-serif";
     ctx.fillText("Save it. Find it. Share it.", 80 + 108, attrY + 62);
@@ -4400,8 +4400,8 @@ function ShareCardModal({ play, onClose }: {
       if (nav.canShare && nav.canShare({ files: [file] })) {
         await nav.share({
           files: [file],
-          title: "Playbook",
-          text: `${play.title} — via Playbook`,
+          title: "PlaySave",
+          text: `${play.title} — via PlaySave`,
         });
         setFeedback("Shared!");
         setTimeout(close, 900);
@@ -4520,7 +4520,7 @@ function ShareCardModal({ play, onClose }: {
               </div>
               <div style={{ minWidth:0 }}>
                 <div style={{ fontSize:13, fontWeight:500, color:STEEP.ink,
-                  letterSpacing:"-0.005em", lineHeight:1.1 }}>Playbook</div>
+                  letterSpacing:"-0.005em", lineHeight:1.1 }}>PlaySave</div>
                 <div style={{ fontSize:10, color:STEEP.graphite,
                   letterSpacing:"-0.005em" }}>Save it. Find it. Share it.</div>
               </div>
@@ -4622,7 +4622,7 @@ type OnboardingStaff = "solo" | "staff" | "large";
 type OnboardingPain =
   | "save_forget" | "cant_find" | "group_chat_lost" | "scroll_again";
 type OnboardingVolume = "light" | "medium" | "heavy" | "constant";
-type OnboardingPlan = "annual" | "monthly" | "free" | "team5" | "team10";
+type OnboardingPlan = "annual" | "weekly" | "free";
 
 type OnboardingAnswers = {
   userType: OnboardingUserType | null;
@@ -4821,7 +4821,7 @@ function PlanPreviewStep({ answers }: { answers: OnboardingAnswers }) {
   return (
     <OnboardingStepShell
       title="Your playbook is ready"
-      subtitle="Based on your answers, here's what Playbook will do for you.">
+      subtitle="Based on your answers, here's what PlaySave will do for you.">
 
       {/* Hero stat card */}
       <div style={{
@@ -4989,7 +4989,7 @@ function ReverseTrialSheet({ onAccept, onDecline }:
           <h2 style={{ fontFamily:STEEP.serif, fontSize:28, fontWeight:400,
             color:STEEP.ink, letterSpacing:"-0.03em", lineHeight:1.2,
             margin:0, marginBottom:12 }}>
-            Try Playbook Pro free for 14 days
+            Try PlaySave Pro free for 14 days
           </h2>
           <p style={{ fontSize:15, color:STEEP.graphite, letterSpacing:"-0.009em",
             lineHeight:1.55, margin:0, marginBottom:24 }}>
@@ -5097,7 +5097,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
   const [planTab, setPlanTab] = useState<"individual" | "team">("individual");
   function chooseTab(tab: "individual" | "team") {
     setPlanTab(tab);
-    setAnswers(a => ({ ...a, plan: tab === "team" ? "team5" : "annual" }));
+    setAnswers(a => ({ ...a, plan: "annual" }));
   }
 
   // Total steps shown to user = real steps - 1 (building screen hidden from count)
@@ -5287,19 +5287,19 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                     selected={answers.plan === "annual"}
                     onClick={() => setAnswers(a => ({ ...a, plan:"annual" }))}
                     name="Annual"
-                    price="$2.50/mo"
-                    sublabel="$29.99/year · unlimited playbook saves"
+                    price="$49.99/yr"
+                    sublabel="Just $0.96/week · unlimited playbook saves"
                     badge="Best value"
                     badgeBg={STEEP.rust}
-                    savings="Save 75%"
+                    savings="Save 81%"
                   />
 
                   {/* Monthly */}
                   <PaywallPlanCard
-                    selected={answers.plan === "monthly"}
-                    onClick={() => setAnswers(a => ({ ...a, plan:"monthly" }))}
-                    name="Monthly"
-                    price="$9.99/mo"
+                    selected={answers.plan === "weekly"}
+                    onClick={() => setAnswers(a => ({ ...a, plan:"weekly" }))}
+                    name="Weekly"
+                    price="$4.99/wk"
                     sublabel="Unlimited playbook saves"
                   />
 
@@ -5492,7 +5492,7 @@ function AuthSheet({ title, onEmailPress, onClose, onDone }:
         {/* Legal */}
         <div style={{ textAlign:"center", fontSize:11,
           color:STEEP.dove, lineHeight:1.6, letterSpacing:"-0.009em" }}>
-          By continuing you agree to Playbook's{" "}
+          By continuing you agree to PlaySave's{" "}
           <span onClick={() => openExternal(LEGAL_URLS.terms)}
             style={{ color:STEEP.graphite, textDecoration:"underline", cursor:"pointer" }}>
             Terms of Service
@@ -5870,7 +5870,7 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
           fontFamily:STEEP.serif,
           letterSpacing:"-0.66px", lineHeight:1.1,
           marginBottom:16 }}>
-          Playbook
+          PlaySave
         </div>
 
         <div style={{ fontSize:16, color:STEEP.ash, lineHeight:1.5,
@@ -6042,7 +6042,7 @@ function PhoneFrame({ children }: { children:React.ReactNode }) {
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function App() {
   // ?skip=1 in the URL bypasses the auth screen for quick preview
-  const skipAuth = new URLSearchParams(window.location.search).get("skip") === "1";
+  const skipAuth = import.meta.env.DEV && new URLSearchParams(window.location.search).get("skip") === "1";
   const [authed, setAuthed]   = useState(skipAuth);
 
   // Real Supabase session gates the app. onAuthStateChange flips `authed`

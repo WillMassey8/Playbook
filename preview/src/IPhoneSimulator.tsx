@@ -231,7 +231,7 @@ export default function IPhoneSimulator({
       <header className="sim-toolbar">
         <div className="sim-toolbar-brand">
           <span className="sim-toolbar-dot" />
-          <span>Playbook · iOS Simulator</span>
+          <span>PlaySave · iOS Simulator</span>
           <span className="sim-live">LIVE</span>
         </div>
         <label className="sim-device-picker">
