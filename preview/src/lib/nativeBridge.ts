@@ -12,6 +12,9 @@
  *   { type: "purchase", plan }
  *   { type: "restore" }
  *   { type: "categorizedIngested", urls: string[] }
+ *   { type: "pushStatus" }        → native replies with pb-push-status (+ pb-push-token if registered)
+ *   { type: "requestPush" }       → shows the iOS permission prompt, then pb-push-status
+ *   { type: "openSettings" }      → opens PlaySave in iOS Settings (to re-enable notifications)
  *
  * Native → web
  *   CustomEvent "pb-apple-session"
@@ -26,6 +29,9 @@
  *
  *   window.__pbPendingCategorized
  *     Same shape as detail.items — race-proof stash before the listener mounts.
+ *
+ *   CustomEvent "pb-push-status"  detail: { status: "authorized"|"denied"|"notDetermined"|"provisional" }
+ *   CustomEvent "pb-push-token"   detail: { token: string, environment: "production"|"sandbox" }
  *
  * Full shell reference: /NATIVE_BRIDGE.md
  */
@@ -76,6 +82,9 @@ export const NativeBridge = {
   syncAuthToken(token: string | null) {
     this.post({ type: "syncAuthToken", token });
   },
+  pushStatus() { this.post({ type: "pushStatus" }); },
+  requestPush() { this.post({ type: "requestPush" }); },
+  openSettings() { this.post({ type: "openSettings" }); },
   categorizedIngested(urls: string[]) {
     this.post({ type: "categorizedIngested", urls });
   },

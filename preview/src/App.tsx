@@ -3,6 +3,7 @@ import IPhoneSimulator from "./IPhoneSimulator";
 import { supabase } from "./lib/supabase";
 import { ingestPlayToAccount, fetchRemotePlays, fetchRemoteCategories, fetchGlobalFeed } from "./lib/plays";
 import { canonicalizeSourceUrl } from "./lib/urls";
+import { installPushBridge, refreshPushRegistration, onPushStatus, loadPrefs, savePrefs, DEFAULT_PREFS, type PushStatus, type NotificationPrefs } from "./lib/push";
 import {
   deleteAccount,
   signOutAccount,
@@ -3100,6 +3101,45 @@ function SettingsRow({ iconBg, iconEl, label, value, last = false, onPress }:
   );
 }
 
+function NotificationsGroup() {
+  const toast = useToast();
+  const [status, setStatus] = useState<PushStatus>("unavailable");
+  const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
+  useEffect(() => onPushStatus(setStatus), []);
+  useEffect(() => { void loadPrefs().then(setPrefs).catch(() => {}); }, []);
+  if (status === "unavailable") return null;
+  const enabled = status === "authorized" || status === "provisional";
+  const flip = (k: keyof NotificationPrefs) => {
+    const next = { ...prefs, [k]: !prefs[k] };
+    setPrefs(next);
+    void savePrefs(next).catch(() => toast("Couldn't save. Try again."));
+  };
+  const bell = (c: string) => (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M3 10V6.5a4 4 0 018 0V10l1 1.5H2L3 10z" stroke={c} strokeWidth="1.4" strokeLinejoin="round"/>
+      <path d="M5.5 12.5a1.5 1.5 0 003 0" stroke={c} strokeWidth="1.4" strokeLinecap="round"/>
+    </svg>
+  );
+  return (
+    <SettingsGroup label="Notifications">
+      {!enabled ? (
+        <SettingsRow iconBg="rgba(255,154,60,0.18)" iconEl={bell("#ff9a3c")} last
+          label="Push Notifications" value={status === "denied" ? "Off in Settings" : "Turn on"}
+          onPress={() => status === "denied" ? NativeBridge.openSettings() : NativeBridge.requestPush()} />
+      ) : (
+        <>
+          <SettingsRow iconBg="rgba(76,217,100,0.18)" iconEl={bell("#4cd964")}
+            label="Saved clips" value={prefs.saves ? "On" : "Off"} onPress={() => flip("saves")} />
+          <SettingsRow iconBg="rgba(92,156,255,0.18)" iconEl={bell("#5c9cff")}
+            label="New plays in feed" value={prefs.feed ? "On" : "Off"} onPress={() => flip("feed")} />
+          <SettingsRow iconBg="rgba(181,107,255,0.18)" iconEl={bell("#b56bff")} last
+            label="PlaySave updates" value={prefs.updates ? "On" : "Off"} onPress={() => flip("updates")} />
+        </>
+      )}
+    </SettingsGroup>
+  );
+}
+
 function SettingsGroup({ label, children }:
   { label?:string; children:React.ReactNode }) {
   const { isDark } = useTheme();
@@ -3626,6 +3666,8 @@ function ProfileScreen({ onSignOut, onDeleteAccount, onHowItWorks }: {
             />
 
           </SettingsGroup>
+
+          <NotificationsGroup />
 
           {/* ── Appearance ────────────────────────────────────────────────── */}
           <SettingsGroup label="Appearance">
@@ -5966,6 +6008,7 @@ export default function App() {
     void supabase.auth.signInWithPassword({ email, password });
   }, []);
   useEffect(() => {
+    installPushBridge();
     if (skipAuth) return;
     supabase.auth.getSession().then(({ data }) => {
       setAuthed(!!data.session);
@@ -5974,6 +6017,7 @@ export default function App() {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthed(!!session);
       NativeBridge.syncAuthToken(session?.access_token ?? null);
+      if (session) refreshPushRegistration();
     });
     return () => sub.subscription.unsubscribe();
   }, [skipAuth]);
