@@ -3517,6 +3517,16 @@ function ProfileScreen({ onSignOut, onDeleteAccount, onHowItWorks }: {
       setAccountEmail(/privaterelay\.appleid\.com$/i.test(e) ? "Signed in with Apple" : e);
     });
   }, []);
+  // Show the outcome of "Restore Purchases" (native posts pb-purchase-result).
+  useEffect(() => {
+    const onResult = (e: Event) => {
+      const d = (e as CustomEvent<{ success?: boolean; plan?: string }>).detail;
+      if (d?.plan !== "restore") return;
+      toast(d.success ? "Subscription restored ✓" : "No active subscription found for this Apple ID");
+    };
+    window.addEventListener("pb-purchase-result", onResult as EventListener);
+    return () => window.removeEventListener("pb-purchase-result", onResult as EventListener);
+  }, [toast]);
   const [signOutConfirm, setSignOutConfirm]   = useState(false);
   const [deleteStep, setDeleteStep]           = useState<0|1|2>(0); // 0=hidden 1=confirm 2=typed
   const [deleting, setDeleting]               = useState(false);
@@ -3568,7 +3578,14 @@ function ProfileScreen({ onSignOut, onDeleteAccount, onHowItWorks }: {
 
           {/* ── Plan ──────────────────────────────────────────────────────── */}
           <SettingsGroup label="Plan">
-            <PressRow onClick={() => { if (!isPro) openUpgrade?.(); }}>
+            <PressRow onClick={() => {
+              // Pro: Apple's own subscription management (change plan / cancel).
+              if (isPro) {
+                if (NativeBridge.available) NativeBridge.manageSubscriptions();
+                else openExternal("https://apps.apple.com/account/subscriptions");
+              }
+              else openUpgrade?.();
+            }}>
               <div style={{ display:"flex", alignItems:"center", gap:12,
                 padding:"11px 16px", minHeight:44 }}>
                 <div style={{ width:30, height:30, borderRadius:8,
@@ -3588,7 +3605,7 @@ function ProfileScreen({ onSignOut, onDeleteAccount, onHowItWorks }: {
                   </div>
                 </div>
                 {isPro ? (
-                  <span style={{ fontSize:13, color:planColor, fontWeight:500 }}>Active</span>
+                  <span style={{ fontSize:13, color:planColor, fontWeight:500 }}>Manage</span>
                 ) : (
                   <div style={{ background:STEEP.ink, borderRadius:999, padding:"5px 12px" }}>
                     <span style={{ fontSize:12, fontWeight:500, color:"#fff" }}>Upgrade</span>

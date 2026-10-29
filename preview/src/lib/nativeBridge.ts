@@ -79,6 +79,10 @@ export const NativeBridge = {
   categorizedIngested(urls: string[]) {
     this.post({ type: "categorizedIngested", urls });
   },
+  /** Apple's manage-subscriptions sheet (change plan / cancel). */
+  manageSubscriptions() {
+    this.post({ type: "manageSubscriptions" });
+  },
   /** Open an http(s) URL in the system browser (WKWebView-safe). */
   openURL(url: string) {
     this.post({ type: "openURL", url });
