@@ -39,11 +39,11 @@ function readIsPro(): boolean {
 
 // ─── Free tier gate: 5 saves, then the upgrade paywall ───────────────────────
 const FREE_SAVE_LIMIT = 5;
-const SaveGateCtx = createContext<{ tryConsumeSave: () => boolean }>({ tryConsumeSave: () => true });
+const SaveGateCtx = createContext<{ tryConsumeSave: () => boolean; isPro?: boolean; savedCount?: number; openUpgrade?: () => void }>({ tryConsumeSave: () => true });
 function useSaveGate() { return useContext(SaveGateCtx); }
 
 function UpgradeSheet({ onClose }: { onClose: () => void }) {
-  const [plan, setPlan] = useState<"annual" | "monthly" | "team10">("annual");
+  const [plan, setPlan] = useState<"annual" | "monthly">("annual");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     const onResult = (e: Event) => {
@@ -84,7 +84,6 @@ function UpgradeSheet({ onClose }: { onClose: () => void }) {
         <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
           <Row id="annual" name="Annual" price="$29.99/yr" sub="Unlimited saves · best value" />
           <Row id="monthly" name="Monthly" price="$9.99/mo" sub="Unlimited saves" />
-          <Row id="team10" name="Team (10 coaches)" price="$79.99/mo" sub="Shared team playbook" />
         </div>
         <button type="button" onClick={buy} disabled={busy} style={{ width:"100%", marginTop:16,
           padding:15, borderRadius:999, border:"none", background:STEEP.ink, color:"#fff",
@@ -3465,24 +3464,19 @@ function ProfileScreen({ onSignOut, onDeleteAccount, onHowItWorks }: {
   const [importOpen, setImportOpen] = useState(false);
   const toast = useToast();
   const T = th(isDark);
-  const [plan]             = useState<PlanTier>("individual"); // mock — swap to "team" to test
+  const { isPro = false, savedCount = 0, openUpgrade } = useSaveGate();
+  const [accountEmail, setAccountEmail] = useState<string>("");
+  useEffect(() => {
+    void supabase.auth.getUser().then(({ data }) => {
+      const e = data.user?.email ?? "";
+      setAccountEmail(/privaterelay\.appleid\.com$/i.test(e) ? "Signed in with Apple" : e);
+    });
+  }, []);
   const [signOutConfirm, setSignOutConfirm]   = useState(false);
   const [deleteStep, setDeleteStep]           = useState<0|1|2>(0); // 0=hidden 1=confirm 2=typed
   const [deleting, setDeleting]               = useState(false);
 
-  const clipsUsed = 47;
-  const clipsMax  = plan === "individual" ? 75 : 2000;
-  const storageRatio = clipsUsed / clipsMax;
-  const teamSeatsUsed = 4; // mock — owner counts toward the 6-seat cap
-
-  const planLabel: Record<PlanTier, string> = {
-    individual: "Individual",
-    team:       "Team",
-  };
-  const planColor: Record<PlanTier, string> = {
-    individual: C.accent,
-    team:       C.blue,
-  };
+  const planColor = C.accent;
 
   function chevron() {
     return (
@@ -3522,83 +3516,41 @@ function ProfileScreen({ onSignOut, onDeleteAccount, onHowItWorks }: {
           </div>
           <div style={{ fontSize:20, fontWeight:400, color:T.text,
             fontFamily:STEEP.serif, letterSpacing:"-0.02em" }}>Coach</div>
-          <div style={{ fontSize:13, color:T.textFaint, letterSpacing:"-0.009em" }}>coach@team.com</div>
+          <div style={{ fontSize:13, color:T.textFaint, letterSpacing:"-0.009em" }}>{accountEmail}</div>
         </div>
 
         <div style={{ padding:"0 16px" }}>
 
           {/* ── Plan ──────────────────────────────────────────────────────── */}
           <SettingsGroup label="Plan">
-            {/* Current tier row */}
-            <PressRow onClick={() => toast(plan === "individual"
-              ? "Team plan — up to 6 coaches, one shared playbook"
-              : "Manage your subscription")}>
+            <PressRow onClick={() => { if (!isPro) openUpgrade?.(); }}>
               <div style={{ display:"flex", alignItems:"center", gap:12,
                 padding:"11px 16px", minHeight:44 }}>
                 <div style={{ width:30, height:30, borderRadius:8,
-                  background: isDark ? `${planColor[plan]}22` : `${planColor[plan]}15`,
+                  background: isDark ? `${planColor}22` : `${planColor}15`,
                   border:`1px solid ${T.divider}`,
                   display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path d="M2 11L5 2l3 6 2-3 2 6"
-                      stroke={planColor[plan]} strokeWidth="1.5"
+                    <path d="M2 11L5 2l3 6 2-3 2 6" stroke={planColor} strokeWidth="1.5"
                       strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:15, color:T.text }}>{planLabel[plan]}</div>
+                  <div style={{ fontSize:15, color:T.text }}>{isPro ? "Unlimited" : "Free"}</div>
                   <div style={{ fontSize:11, color:T.textSec, marginTop:2 }}>
-                    {plan === "individual"
-                      ? "1 coach · personal playbook"
-                      : `Up to ${TEAM_SEAT_MAX} coaches · shared playbook`}
+                    {isPro ? "Unlimited playbook saves"
+                      : `${Math.min(savedCount, FREE_SAVE_LIMIT)} of ${FREE_SAVE_LIMIT} free saves used`}
                   </div>
                 </div>
-                {plan === "individual" ? (
-                  <div style={{ background:STEEP.ink, borderRadius:999,
-                    padding:"5px 12px", cursor:"pointer" }}>
-                    <span style={{ fontSize:12, fontWeight:500, color:"#fff",
-                      letterSpacing:"-0.009em" }}>
-                      Go Team
-                    </span>
-                  </div>
+                {isPro ? (
+                  <span style={{ fontSize:13, color:planColor, fontWeight:500 }}>Active</span>
                 ) : (
-                  <>
-                    <span style={{ fontSize:13, color:planColor[plan],
-                      fontWeight:500, marginRight:6 }}>Active</span>
-                    {chevron()}
-                  </>
+                  <div style={{ background:STEEP.ink, borderRadius:999, padding:"5px 12px" }}>
+                    <span style={{ fontSize:12, fontWeight:500, color:"#fff" }}>Upgrade</span>
+                  </div>
                 )}
               </div>
             </PressRow>
-
-            {/* Manage Team — only for team tier */}
-            {plan === "team" && (
-              <>
-                <div style={{ height:0.5, background:T.divider, marginLeft:58 }} />
-                <PressRow onClick={() => toast("Team management coming soon")}>
-                  <div style={{ display:"flex", alignItems:"center", gap:12,
-                    padding:"11px 16px", minHeight:44 }}>
-                    <div style={{ width:30, height:30, borderRadius:8,
-                      background:`${C.blue}22`, border:`1px solid ${T.glassBT}`,
-                      display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                      <svg width="15" height="12" viewBox="0 0 15 12" fill="none">
-                        <circle cx="5" cy="4" r="2.5" stroke={C.blue} strokeWidth="1.4"/>
-                        <circle cx="10.5" cy="4" r="2.5" stroke={C.blue} strokeWidth="1.4"/>
-                        <path d="M1 11c0-2.21 1.79-4 4-4M14 11c0-2.21-1.79-4-4-4M5 7c1.1 0 2.1.45 2.83 1.17"
-                          stroke={C.blue} strokeWidth="1.4" strokeLinecap="round"/>
-                      </svg>
-                    </div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:15, color:T.text }}>Manage Team</div>
-                      <div style={{ fontSize:11, color:T.textSec, marginTop:2 }}>
-                        Westfield Prep · {teamSeatsUsed} of {TEAM_SEAT_MAX} seats
-                      </div>
-                    </div>
-                    {chevron()}
-                  </div>
-                </PressRow>
-              </>
-            )}
           </SettingsGroup>
 
           {/* ── Library ───────────────────────────────────────────────────── */}
@@ -3612,45 +3564,6 @@ function ProfileScreen({ onSignOut, onDeleteAccount, onHowItWorks }: {
                   stroke="#4cd964" strokeWidth="1.6" strokeLinecap="round"/>
               </svg>}
             />
-
-            {/* Storage — custom row with progress bar */}
-            <div style={{ height:0.5, background:T.divider, marginLeft:58 }} />
-            <PressRow onClick={() => toast("Storage management coming soon")}>
-              <div style={{ padding:"11px 16px" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:12,
-                  marginBottom:8 }}>
-                  <div style={{ width:30, height:30, borderRadius:8, flexShrink:0,
-                    background:"rgba(255,200,60,0.18)", border:`1px solid ${T.glassBT}`,
-                    display:"flex", alignItems:"center", justifyContent:"center" }}>
-                    <svg width="13" height="14" viewBox="0 0 13 14" fill="none">
-                      <rect x="1" y="4" width="11" height="9" rx="2"
-                        stroke="#ffc83c" strokeWidth="1.4"/>
-                      <path d="M4 4V3a2.5 2.5 0 015 0v1"
-                        stroke="#ffc83c" strokeWidth="1.4" strokeLinecap="round"/>
-                    </svg>
-                  </div>
-                  <span style={{ flex:1, fontSize:15, color:T.text }}>Storage</span>
-                  <span style={{ fontSize:12, color:T.textSec,
-                    fontVariantNumeric:"tabular-nums" }}>
-                    {clipsUsed} of {clipsMax} clips
-                  </span>
-                  {chevron()}
-                </div>
-                {/* Progress bar */}
-                <div style={{ marginLeft:42, height:3, borderRadius:99,
-                  background:T.divider, overflow:"hidden" }}>
-                  <div style={{ height:"100%", borderRadius:99,
-                    width:`${storageRatio * 100}%`,
-                    background: storageRatio > 0.85
-                      ? C.red
-                      : storageRatio > 0.6
-                      ? C.orange
-                      : C.accent,
-                    transition:"width .4s ease"
-                  }} />
-                </div>
-              </div>
-            </PressRow>
 
           </SettingsGroup>
 
@@ -4778,7 +4691,7 @@ function BuildingPlaybookStep({ onDone, userType }:
       ]
     : [
         "Analyzing your coaching workflow",
-        "Building your team playbook",
+        "Building your playbook",
         "Mapping your install needs",
         "Calibrating clip categories",
       ];
@@ -5129,7 +5042,6 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
     if (step === "preview") return "See your plan";
     if (step === "paywall") {
       if (answers.plan === "free") return "Continue for free";
-      if (answers.plan === "team5" || answers.plan === "team10") return "Get the Team plan";
       return "Get Unlimited";
     }
     return "Continue";
@@ -5297,23 +5209,6 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
               ? "Save it. Find it. Share it."
               : "Every play, ready when you need it"}>
 
-            {/* Individual / Team toggle */}
-            <div style={{ display:"flex", gap:4, background: STEEP.fog,
-              borderRadius:12, padding:4, marginBottom:12 }}>
-              {(["individual","team"] as const).map(tab => (
-                <button key={tab} type="button" onClick={() => chooseTab(tab)}
-                  style={{ flex:1, padding:"9px 0", borderRadius:9, border:"none",
-                    cursor:"pointer",
-                    background: planTab === tab ? STEEP.white : "transparent",
-                    boxShadow: planTab === tab ? STEEP.cardShadow : "none",
-                    color: planTab === tab ? STEEP.ink : STEEP.graphite,
-                    fontSize:14, fontWeight:600, fontFamily: STEEP.sans,
-                    letterSpacing:"-0.01em", transition:"all .15s" }}>
-                  {tab === "individual" ? "Individual" : "Team"}
-                </button>
-              ))}
-            </div>
-
             {/* Social proof */}
             <div style={{
               background: STEEP.white,
@@ -5340,7 +5235,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
             <div style={{ display:"flex", flexDirection:"column", gap:10,
               marginTop:10, paddingTop:0 }}>
 
-              {planTab === "individual" ? (
+              {(
                 <>
                   {/* Annual — recommended */}
                   <PaywallPlanCard
@@ -5370,28 +5265,6 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                     name="Free"
                     price="$0"
                     sublabel="Save up to 5 plays · browse the full feed"
-                  />
-                </>
-              ) : (
-                <>
-                  {/* Team — up to 5 coaches */}
-                  <PaywallPlanCard
-                    selected={answers.plan === "team5"}
-                    onClick={() => setAnswers(a => ({ ...a, plan:"team5" }))}
-                    name="5 Coaches"
-                    price="$49.99/mo"
-                    sublabel="Up to 5 coaches · shared playbook · unlimited saves"
-                    badge={recommendTeam ? "Most popular" : undefined}
-                    badgeBg={STEEP.ink}
-                  />
-
-                  {/* Team — up to 10 coaches */}
-                  <PaywallPlanCard
-                    selected={answers.plan === "team10"}
-                    onClick={() => setAnswers(a => ({ ...a, plan:"team10" }))}
-                    name="10 Coaches"
-                    price="$79.99/mo"
-                    sublabel="Up to 10 coaches · shared playbook · unlimited saves"
                   />
                 </>
               )}
@@ -6559,7 +6432,7 @@ export default function App() {
       affinity, track: trackSignal, rerankFeed, topCategories, suggestSimilarPlays
     }}>
     <PlaysCtx.Provider value={{ plays: allPlaysList, addPlay, feed: feedList }}>
-    <SaveGateCtx.Provider value={{ tryConsumeSave }}>
+    <SaveGateCtx.Provider value={{ tryConsumeSave, isPro, savedCount, openUpgrade: () => setShowUpgrade(true) }}>
     <ToastProvider>
     <IPhoneSimulator lightStatusBar={isDark || screen.id === "feed" || screen.id === "clip"}>
       <PhoneFrame>

@@ -2,86 +2,63 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Privacy Policy — Playbook</title>
   <style>
-    :root { color-scheme: light dark; }
-    body {
-      margin: 0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      line-height: 1.55;
-      background: #0b0b0e;
-      color: #f2f2f4;
-    }
-    main {
-      max-width: 42rem;
-      margin: 0 auto;
-      padding: 2.5rem 1.25rem 4rem;
-    }
-    h1 { font-size: 1.75rem; letter-spacing: -0.02em; margin: 0 0 0.35rem; }
-    h2 { font-size: 1.05rem; margin: 1.75rem 0 0.5rem; }
-    p, li { color: #c9c9d1; font-size: 0.95rem; }
-    .meta { color: #8b8b96; font-size: 0.85rem; margin-bottom: 1.5rem; }
-    a { color: #7eb6ff; }
+    body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Helvetica, Arial, sans-serif;
+      line-height:1.6; background:#fff; color:#17191c; }
+    main { max-width:42rem; margin:0 auto;
+      padding:calc(2rem + env(safe-area-inset-top)) 1.25rem calc(4rem + env(safe-area-inset-bottom)); }
+    h1 { font-size:1.75rem; letter-spacing:-0.02em; margin:0 0 .35rem; }
+    h2 { font-size:1.05rem; margin:1.75rem 0 .5rem; }
+    p, li { color:#3a3d43; font-size:.95rem; }
+    .meta { color:#777b86; font-size:.85rem; margin-bottom:1.5rem; }
+    a { color:#5d2a1a; }
   </style>
 </head>
-<body>
-  <main>
-    <h1>Privacy Policy</h1>
-    <p class="meta">Playbook (Play Save) · Last updated October 15, 2026</p>
+<body><main>
+  <h1>Privacy Policy</h1>
+  <div class="meta">Playbook by NOSHOT, LLC · Effective October 29, 2026</div>
+  <p>This policy explains what information the Playbook app ("Playbook", "we", "us") collects, how we use it, and the choices you have. Playbook is operated by NOSHOT, LLC.</p>
 
-    <p>
-      Playbook helps coaches save and organize play clips from social platforms
-      (X/Twitter, TikTok, Instagram, Facebook). This policy explains what we collect
-      and how we use it.
-    </p>
+  <h2>Information we collect</h2>
+  <ul>
+    <li><strong>Account information.</strong> You sign in with Apple. We receive a unique Apple user identifier and the email address Apple shares with us (which may be a private relay address), and your name if you choose to share it. We do not receive your Apple ID password.</li>
+    <li><strong>Saved links.</strong> When you share a post to Playbook, we store the post's web link (for example an X, Instagram, TikTok or Facebook URL), the platform, a title, and, where the platform provides it, an official embed link or thumbnail link. We do not download or store copies of the videos.</li>
+    <li><strong>Categories.</strong> The play categories and sub-categories you create or choose, and which saved links belong to them.</li>
+    <li><strong>Purchases.</strong> Subscriptions are bought and billed through Apple. We do not receive your payment card details. The app checks with Apple whether your subscription is active.</li>
+    <li><strong>On-device preferences.</strong> Settings such as theme, likes and usage streaks are stored on your device.</li>
+  </ul>
+  <p>We do not use third-party advertising, ad tracking, or cross-app tracking, and we do not sell your data.</p>
 
-    <h2>Information we collect</h2>
-    <ul>
-      <li><strong>Account data</strong> — email address and authentication identifiers (including Sign in with Apple when enabled).</li>
-      <li><strong>Saved plays</strong> — source URLs you share or import, categories you assign, and related metadata (titles, thumbnails, official embed URLs).</li>
-      <li><strong>Usage signals</strong> — optional on-device preferences such as theme, streaks, and personalization signals stored locally on your device.</li>
-      <li><strong>Purchase status</strong> — if you subscribe via Apple In-App Purchase, entitlement status may be shared with our servers to unlock features.</li>
-    </ul>
+  <h2>Shared feed</h2>
+  <p>Clips you save are added to Playbook's shared feed so other coaches can discover them. The feed shows the post link, platform, title and category. It does not show your name, email or account details.</p>
 
-    <h2>How we use information</h2>
-    <ul>
-      <li>Provide and sync your playbook across sessions.</li>
-      <li>Resolve official embed / temporary playback helpers so clips can play muted in-app.</li>
-      <li>Authenticate you and protect account access.</li>
-      <li>Respond to support requests you send us.</li>
-    </ul>
+  <h2>How we use information</h2>
+  <ul>
+    <li>To create and secure your account and keep you signed in.</li>
+    <li>To save, organize and sync your playbook across your devices.</li>
+    <li>To show the shared feed and play clips from the original platform.</li>
+    <li>To unlock paid features when your Apple subscription is active.</li>
+    <li>To provide support and keep the service working and safe.</li>
+  </ul>
 
-    <h2>What we do <em>not</em> do</h2>
-    <ul>
-      <li>We do <strong>not</strong> download or permanently rehost third-party social video files into our storage for App Store Guideline 5.2.3 compliance. Social playback uses official embeds or temporary streams.</li>
-      <li>We do not sell your personal information.</li>
-      <li>We do not use your playbook content for advertising.</li>
-    </ul>
+  <h2>Service providers and third parties</h2>
+  <p>We use Supabase to host our database and authentication, and Vercel to host the web app that powers Playbook. When a clip plays, it is loaded from the original platform (X, Instagram, TikTok or Facebook), which may collect information under its own privacy policy. Apple processes sign-in and payments under Apple's privacy policy.</p>
 
-    <h2>Third-party services</h2>
-    <ul>
-      <li><strong>Supabase</strong> — authentication and database hosting for account and play data.</li>
-      <li><strong>Apple</strong> — Sign in with Apple and In-App Purchases when used.</li>
-      <li><strong>Social platforms</strong> — when you open or embed a source post, those platforms’ own policies apply.</li>
-    </ul>
+  <h2>Retention and deletion</h2>
+  <p>We keep your account and saved links until you delete them. You can delete your account at any time in the app under Profile › Delete Account. This permanently removes your account, your saved links and your categories. You can also email us to request deletion.</p>
 
-    <h2>Data retention &amp; deletion</h2>
-    <p>
-      You can delete your account in Profile → Delete Account. This permanently removes
-      your account and associated playbook data from our servers. Local device cache may
-      remain until you uninstall the app.
-    </p>
+  <h2>Children</h2>
+  <p>Playbook is not directed to children under 13, and we do not knowingly collect information from them.</p>
 
-    <h2>Children</h2>
-    <p>
-      Playbook is intended for coaches and adults. It is not directed to children under 13.
-    </p>
+  <h2>Your rights</h2>
+  <p>Depending on where you live, you may have rights to access, correct, export or delete your information. Contact us and we will respond within a reasonable time.</p>
 
-    <h2>Contact</h2>
-    <p>
-      Questions about privacy: <a href="mailto:support@playbook.app">support@playbook.app</a>
-    </p>
-  </main>
-</body>
-</html>
+  <h2>Changes</h2>
+  <p>We may update this policy. If we make material changes, we will update the date above and, where appropriate, notify you in the app.</p>
+
+  <h2>Contact</h2>
+  <p>NOSHOT, LLC<br/>1301 New Hampshire Ave<br/>Lynn Haven, FL 32444<br/>
+  <a href="mailto:admin@noshotapp.io">admin@noshotapp.io</a></p>
+</main></body></html>
