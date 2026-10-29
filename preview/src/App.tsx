@@ -45,6 +45,7 @@ function useSaveGate() { return useContext(SaveGateCtx); }
 function UpgradeSheet({ onClose }: { onClose: () => void }) {
   const [plan, setPlan] = useState<"annual" | "monthly">("annual");
   const [busy, setBusy] = useState(false);
+  const { savedCount = 0 } = useSaveGate();
   useEffect(() => {
     const onResult = (e: Event) => {
       setBusy(false);
@@ -76,7 +77,7 @@ function UpgradeSheet({ onClose }: { onClose: () => void }) {
         borderRadius:"24px 24px 0 0", maxHeight:"92vh", overflowY:"auto",
         padding:"22px 20px calc(22px + env(safe-area-inset-bottom))", fontFamily:STEEP.sans }}>
         <div style={{ fontFamily:STEEP.serif, fontSize:24, color:STEEP.ink, marginBottom:6 }}>
-          You've used your 5 free saves
+          {savedCount >= FREE_SAVE_LIMIT ? `You've used your ${FREE_SAVE_LIMIT} free saves` : "Unlock unlimited saves"}
         </div>
         <div style={{ fontSize:14, color:STEEP.graphite, marginBottom:16 }}>
           Keep scrolling the feed for free. Upgrade to save unlimited plays to your playbook.
