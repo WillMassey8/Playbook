@@ -21,10 +21,23 @@ const url = Deno.env.get("SUPABASE_URL")!;
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const admin = createClient(url, serviceKey);
 
-const KEY_ID = Deno.env.get("APNS_KEY_ID");
-const TEAM_ID = Deno.env.get("APNS_TEAM_ID") ?? "QDC2GGJ44D";
-const PRIVATE_KEY = Deno.env.get("APNS_PRIVATE_KEY");
-const BUNDLE_ID = Deno.env.get("APNS_BUNDLE_ID") ?? "com.wymas.Playbook";
+// Config: edge-function env secrets win; otherwise read from Supabase Vault
+// via public.get_apns_config() (service_role only).
+let KEY_ID = Deno.env.get("APNS_KEY_ID");
+let TEAM_ID = Deno.env.get("APNS_TEAM_ID") ?? "QDC2GGJ44D";
+let PRIVATE_KEY = Deno.env.get("APNS_PRIVATE_KEY");
+let BUNDLE_ID = Deno.env.get("APNS_BUNDLE_ID") ?? "com.wymas.Playbook";
+let configLoaded = false;
+async function loadConfig() {
+  if (configLoaded || (KEY_ID && PRIVATE_KEY)) { configLoaded = true; return; }
+  const { data } = await admin.rpc("get_apns_config");
+  const m = new Map((data ?? []).map((r: { name: string; value: string }) => [r.name, r.value]));
+  KEY_ID = KEY_ID ?? m.get("apns_key_id");
+  PRIVATE_KEY = PRIVATE_KEY ?? m.get("apns_private_key");
+  TEAM_ID = m.get("apns_team_id") ?? TEAM_ID;
+  BUNDLE_ID = m.get("apns_bundle_id") ?? BUNDLE_ID;
+  configLoaded = !!(KEY_ID && PRIVATE_KEY);
+}
 const FEED_THROTTLE_MS = 6 * 60 * 60 * 1000;
 
 const json = (b: unknown, status = 200) =>
@@ -88,7 +101,13 @@ async function prefsFor(userIds: string[]) {
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
   const payload = await req.json().catch(() => ({}));
+  await loadConfig();
   if (!KEY_ID || !PRIVATE_KEY) return json({ skipped: "apns_not_configured" });
+  if (payload.type === "config_check") {
+    // Signs a JWT locally to prove the key parses; reveals nothing secret.
+    try { await apnsJwt(); return json({ configured: true, key_id: KEY_ID, team_id: TEAM_ID, bundle_id: BUNDLE_ID }); }
+    catch (e) { return json({ configured: false, error: String(e) }); }
+  }
 
   if (payload.type === "broadcast") {
     if (req.headers.get("Authorization") !== `Bearer ${serviceKey}`) return json({ error: "forbidden" }, 403);
