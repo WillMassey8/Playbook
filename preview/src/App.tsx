@@ -32,6 +32,12 @@ const LEGAL_URLS = {
   support: `${LEGAL_ORIGIN}/support.html`,
 };
 
+// Localized App Store prices injected by the iOS shell (StoreKit displayPrice).
+function nativePrice(plan: "weekly" | "annual", fallback: string): string {
+  const p = typeof window !== "undefined" ? (window as any).__pbPrices?.[plan] : undefined;
+  return typeof p === "string" && p ? p : fallback;
+}
+
 function readIsPro(): boolean {
   if (typeof window === "undefined") return false;
   if ((window as any).__pbPro === true) return true;
@@ -84,8 +90,8 @@ function UpgradeSheet({ onClose }: { onClose: () => void }) {
           Keep scrolling the feed for free. Upgrade to save unlimited plays to your playbook.
         </div>
         <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-          <Row id="annual" name="Annual" price="$49.99/year" sub="Unlimited saves · Best value · Save 81%" />
-          <Row id="weekly" name="Weekly" price="$4.99/wk" sub="Unlimited saves · billed weekly" />
+          <Row id="annual" name="Annual" price={`${nativePrice("annual", "$49.99")}/year`} sub="Unlimited saves · Best value · Save 81%" />
+          <Row id="weekly" name="Weekly" price={`${nativePrice("weekly", "$4.99")}/wk`} sub="Unlimited saves · billed weekly" />
         </div>
         <button type="button" onClick={buy} disabled={busy} style={{ width:"100%", marginTop:16,
           padding:15, borderRadius:999, border:"none", background:STEEP.ink, color:"#fff",
@@ -5338,7 +5344,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                     selected={answers.plan === "annual"}
                     onClick={() => setAnswers(a => ({ ...a, plan:"annual" }))}
                     name="Annual"
-                    price="$49.99/year"
+                    price={`${nativePrice("annual", "$49.99")}/year`}
                     sublabel="Unlimited playbook saves"
                     badge="Best value"
                     badgeBg={STEEP.rust}
@@ -5350,7 +5356,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete:()=>void; onBack:()
                     selected={answers.plan === "weekly"}
                     onClick={() => setAnswers(a => ({ ...a, plan:"weekly" }))}
                     name="Weekly"
-                    price="$4.99/wk"
+                    price={`${nativePrice("weekly", "$4.99")}/wk`}
                     sublabel="Unlimited playbook saves"
                   />
 
@@ -5519,6 +5525,12 @@ function AuthSheet({ title, onEmailPress, onClose, onDone }:
             letterSpacing:"-0.009em" }}>Continue with Apple</span>
         </button>
 
+        <button type="button" onClick={onEmailPress}
+          style={{ display:"block", width:"100%", background:"none", border:"none",
+            color:STEEP.graphite, fontSize:13, cursor:"pointer", padding:"4px 0 16px",
+            textDecoration:"underline", textUnderlineOffset:3, letterSpacing:"-0.009em" }}>
+          Sign in with email
+        </button>
 
         {sheetErr && (
           <div style={{ fontSize:12, color:"#c0392b", textAlign:"center", marginTop:-8 }}>{sheetErr}</div>
@@ -5852,6 +5864,12 @@ function AuthScreen({ onDone }: { onDone:()=>void }) {
               </svg>
               <span style={{ fontSize:16, fontWeight:500, color:"#fff",
                 letterSpacing:"-0.009em" }}>Continue with Apple</span>
+            </button>
+            <button type="button" onClick={() => { setAuthErr(null); setEmailBack("create"); setPhase("email"); }}
+              style={{ background:"none", border:"none", color:STEEP.graphite, fontSize:13,
+                cursor:"pointer", padding:"2px 0", textDecoration:"underline",
+                textUnderlineOffset:3, letterSpacing:"-0.009em" }}>
+              Sign in with email
             </button>
             {authErr && (
               <div style={{ fontSize:12, color:"#c0392b", textAlign:"center" }}>{authErr}</div>
