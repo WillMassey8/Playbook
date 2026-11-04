@@ -5649,7 +5649,7 @@ function SharedClipIntakeOverlay({
               style={{
                 padding:"10px 14px", borderRadius:999, cursor:"pointer",
                 border: parentId === p.id ? "none" : "1px solid rgba(255,255,255,0.12)",
-                background: parentId === p.id ? C.accent : "rgba(255,255,255,0.08)",
+                background: parentId === p.id ? "#fff" : "rgba(255,255,255,0.08)",
                 color: parentId === p.id ? "#000" : "#fff",
                 fontWeight: parentId === p.id ? 700 : 600,
                 ...chipStyle(parentId === p.id, parentId !== "", true),
