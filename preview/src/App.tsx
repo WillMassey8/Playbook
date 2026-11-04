@@ -537,7 +537,9 @@ function descendantIds(catId: string): Set<string> {
 }
 function playsInCat(catId: string) {
   const ids = descendantIds(catId);
-  return allPlays().filter(p => ids.has(p.categoryId));
+  // Only the coach's own saved clips — seeded sample clips (many with
+  // placeholder URLs that never play) made categories look full but empty.
+  return USER_PLAYS.filter(p => ids.has(p.categoryId));
 }
 
 // ─── In-app muted autoplay (no re-hosted social files in Storage) ─────────────
@@ -612,6 +614,29 @@ async function fetchTwitterStream(id: string): Promise<string | null> {
     }
   } catch { /* syndication unavailable */ }
   return null;
+}
+
+const posterCache = new Map<string, string | null>();
+const posterInFlight = new Map<string, Promise<string | null>>();
+/** Poster image for an X video (for playbook thumbnails) — not stored. */
+function resolveTwitterPoster(sourceUrl: string): Promise<string | null> {
+  const id = extractTweetId(sourceUrl);
+  if (!id) return Promise.resolve(null);
+  if (posterCache.has(id)) return Promise.resolve(posterCache.get(id)!);
+  const pending = posterInFlight.get(id);
+  if (pending) return pending;
+  const lookup = (async () => {
+    try {
+      const res = await fetch(`/tw-syndication/tweet-result?id=${id}&lang=en&token=${syndicationToken(id)}`);
+      if (!res.ok || !/\bjson\b/i.test(res.headers.get("content-type") ?? "")) return null;
+      const payload = await res.json();
+      const media: Array<Record<string, unknown>> = payload?.mediaDetails ?? [];
+      const m = media.find(x => typeof x.media_url_https === "string");
+      return (m?.media_url_https as string | undefined) ?? null;
+    } catch { return null; }
+  })().then(u => { posterCache.set(id, u); posterInFlight.delete(id); return u; });
+  posterInFlight.set(id, lookup);
+  return lookup;
 }
 
 /** Temporary X stream for muted <video> autoplay — not stored. */
@@ -875,15 +900,54 @@ function NativeClipVideo({ src, isActive, paused, videoRef, warm = false }: {
   );
 }
 
-/** Grid thumbnail — backdrop only (embeds are for full-screen playback). */
+/** Grid thumbnail — stored thumbnail, else X poster, else branded tile. */
 function PlaybookClipPreview({ play }: { play: FeedPlay }) {
-  return <PlayMediaBackdrop play={play} />;
+  const [poster, setPoster] = useState<string | null>(null);
+  useEffect(() => {
+    if (play.thumbnailUrl || play.platform !== "twitter") return;
+    let live = true;
+    void resolveTwitterPoster(play.sourceUrl).then(u => { if (live) setPoster(u); });
+    return () => { live = false; };
+  }, [play.thumbnailUrl, play.platform, play.sourceUrl]);
+  const img = play.thumbnailUrl || poster;
+  if (img) {
+    return (
+      <img src={img} alt="" loading="lazy"
+        style={{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover" }} />
+    );
+  }
+  const brand: Record<string, string> = {
+    twitter:"#1d1d1f", instagram:"#833ab4", tiktok:"#111", facebook:"#1877F2",
+  };
+  return (
+    <div style={{ position:"absolute", inset:0,
+      background:`linear-gradient(160deg, ${brand[play.platform] ?? play.gradient[0]} 0%, #0d0d0f 100%)`,
+      display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <span style={{ color:"rgba(255,255,255,0.55)", fontSize:11, fontWeight:600,
+        letterSpacing:"0.04em", textTransform:"uppercase" }}>
+        {play.platform === "twitter" ? "X" : play.platform}
+      </span>
+    </div>
+  );
+}
+
+/** Title strip over a playbook grid tile. */
+function TileCaption({ play }: { play: FeedPlay }) {
+  return (
+    <div style={{ position:"absolute", left:0, right:0, bottom:0,
+      background:"linear-gradient(transparent, rgba(0,0,0,0.85))",
+      padding:"18px 6px 22px", pointerEvents:"none" }}>
+      <div style={{ color:"#fff", fontSize:10, fontWeight:600, lineHeight:1.25,
+        display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical" as any,
+        overflow:"hidden" }}>{play.title}</div>
+    </div>
+  );
 }
 
 type Screen =
   | { id:"feed" }
   | { id:"playbook" }
-  | { id:"category"; catId:string }
+  | { id:"category"; catId:string; highlightId?:string }
   | { id:"grid"; catId:string; label:string }
   | { id:"clip"; playId:string; from:Screen }
   | { id:"liked" }
@@ -1474,7 +1538,9 @@ function FeedCard({ play, isActive, warm = false }:
           warm={warm}
           onUnavailable={() => {
             setEmbedFailed(true);
-            if (play.platform === "instagram" || play.platform === "facebook")
+            // Facebook posts that can't embed stay in the feed as a
+            // "Watch on Facebook" card instead of silently disappearing.
+            if (play.platform === "instagram")
               window.dispatchEvent(new CustomEvent("pb-feed-unavailable", { detail: play.id }));
           }}
         />
@@ -1502,10 +1568,13 @@ function FeedCard({ play, isActive, warm = false }:
           zIndex: 2 }}>
           <div style={{ fontSize:13, fontWeight:600, color:"rgba(255,255,255,0.9)",
             letterSpacing:"-0.01em", textAlign:"center", padding:"0 24px" }}>
-            This clip is private, deleted, or unavailable in-app.
+            {play.platform === "facebook"
+              ? "This Facebook post can't play inside PlaySave."
+              : "This clip is private, deleted, or unavailable in-app."}
           </div>
-          <div style={{ fontSize:12, fontWeight:600, color:C.accent }}>
-            {platformOpenLabel(play.platform)}
+          <div style={{ fontSize:12, fontWeight:600, color: play.platform === "facebook" ? "#fff" : C.accent,
+            ...(play.platform === "facebook" ? { background:"#1877F2", borderRadius:999, padding:"9px 18px" } : {}) }}>
+            {play.platform === "facebook" ? "Watch on Facebook" : platformOpenLabel(play.platform)}
           </div>
         </div>
       )}
@@ -2030,13 +2099,18 @@ function ClipSwatches({ catId, max = 4 }: { catId:string; max?:number }) {
 }
 
 // ─── CATEGORY SCREEN ──────────────────────────────────────────────────────────
-function CategoryScreen({ catId, navigate, from }: { catId:string; navigate:(s:Screen)=>void; from?:Screen }) {
+function CategoryScreen({ catId, navigate, from, highlightId }: { catId:string; navigate:(s:Screen)=>void; from?:Screen; highlightId?:string }) {
+  const highlightRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (highlightId) highlightRef.current?.scrollIntoView({ behavior:"smooth", block:"center" });
+  }, [highlightId]);
   const { isDark } = useTheme();
   const T = th(isDark);
   const cat    = CATEGORIES.find(c => c.id === catId)!;
   const col    = catColor(cat.id);
   const kids   = children(cat.id);
   const direct = playsInCat(cat.id).filter(p => p.categoryId === catId);
+  const allClips = playsInCat(cat.id).sort((a, b) => b.addedAt.getTime() - a.addedAt.getTime());
   const total  = direct.length + kids.reduce((a,k) => a + playsInCat(k.id).length, 0);
 
   // Separate populated vs empty subcategories
@@ -2175,21 +2249,26 @@ function CategoryScreen({ catId, navigate, from }: { catId:string; navigate:(s:S
           </div>
         )}
 
-        {/* Direct clips grid */}
-        {direct.length > 0 && (
+        {/* Every clip saved in this category (and its subcategories) */}
+        {allClips.length > 0 && (
           <div style={{ marginTop:24, padding:"0 16px" }}>
-            <div style={{ fontSize:11, fontWeight:500, color:"rgba(255,255,255,0.28)",
-              letterSpacing:"0.04em", marginBottom:8 }}>Clips</div>
+            <div style={{ fontSize:11, fontWeight:500, color:T.sectionLabel,
+              letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>
+              {kids.length > 0 ? "All clips" : "Clips"}
+            </div>
             <div style={{ borderRadius:14, overflow:"hidden" }}>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:2 }}>
-                {direct.map(p => (
-                  <div key={p.id}
+                {allClips.map(p => (
+                  <div key={p.id} data-testid="pb-clip-tile" aria-label={`Play ${p.title}`} role="button"
+                    ref={p.id === highlightId ? highlightRef : undefined}
+                    className={p.id === highlightId ? "pb-just-saved" : undefined}
                     onClick={() => navigate({ id:"clip", playId:p.id, from: from ?? { id:"category", catId } })}
                     style={{ aspectRatio:"2/3",
                       background:`linear-gradient(160deg, ${p.gradient[0]} 0%, #111114 100%)`,
                       cursor:"pointer", position:"relative", overflow:"hidden" }}>
 
                     <PlaybookClipPreview play={p as FeedPlay} />
+                    <TileCaption play={p as FeedPlay} />
 
                     <div style={{ position:"absolute", top:6, right:7 }}>
                       <svg width="10" height="11" viewBox="0 0 10 11" fill="white" opacity={0.85}>
@@ -2208,7 +2287,7 @@ function CategoryScreen({ catId, navigate, from }: { catId:string; navigate:(s:S
           </div>
         )}
 
-        {kids.length === 0 && direct.length === 0 && (
+        {allClips.length === 0 && (
           <div style={{ padding:"56px 20px", textAlign:"center",
             color:T.textFaint, fontSize:13 }}>
             No clips in {cat.name} yet
@@ -2445,6 +2524,7 @@ function GridScreen({ catId, label, navigate }: { catId:string; label:string; na
                   cursor:"pointer", position:"relative", overflow:"hidden" }}>
 
                 <PlaybookClipPreview play={p as FeedPlay} />
+                <TileCaption play={p as FeedPlay} />
 
                 {/* Play icon */}
                 <div style={{ position:"absolute", top:6, right:7 }}>
@@ -2535,11 +2615,16 @@ function ClipPage({ play, isActive, warm = false, paused, onTogglePause }: {
           zIndex: 2, padding: 24 }}>
           <div style={{ fontSize:14, fontWeight:600, color:"rgba(255,255,255,0.85)",
             textAlign:"center" }}>
-            This clip is private, deleted, or unavailable in-app.
+            {play.platform === "facebook"
+              ? "This Facebook post can't play inside PlaySave."
+              : "This clip is private, deleted, or unavailable in-app."}
           </div>
           <a href={play.sourceUrl} target="_blank" rel="noopener noreferrer"
-            style={{ fontSize:13, fontWeight:600, color:C.accent, textDecoration:"none" }}>
-            {platformOpenLabel(play.platform)}
+            onClick={e => { e.preventDefault(); e.stopPropagation(); openExternal(play.sourceUrl); }}
+            style={{ fontSize:13, fontWeight:600, textDecoration:"none",
+              color: play.platform === "facebook" ? "#fff" : C.accent,
+              ...(play.platform === "facebook" ? { background:"#1877F2", borderRadius:999, padding:"9px 18px" } : {}) }}>
+            {play.platform === "facebook" ? "Watch on Facebook" : platformOpenLabel(play.platform)}
           </a>
         </div>
       )}
@@ -5463,11 +5548,14 @@ function SharedClipIntakeOverlay({
   play,
   onSaved,
   onSkip,
+  onShowInPlaybook,
 }: {
   play: UserPlayItem;
   onSaved: (playId: string, categoryId: string, categoryName: string) => void;
   onSkip: () => void;
+  onShowInPlaybook?: (playId: string, categoryId: string, categoryName: string) => void;
 }) {
+  const [savedAs, setSavedAs] = useState<{ id: string; name: string } | null>(null);
   const [parentId, setParentId] = useState("");
   const [subId, setSubId] = useState("");
   const [saving, setSaving] = useState(false);
@@ -5501,8 +5589,18 @@ function SharedClipIntakeOverlay({
       setErr(remote.error || "Couldn't save — try again.");
       return;
     }
-    onSaved(play.id, selectedId, catName);
+    // Stay open on a "Saved" state so the coach can jump to the play.
+    setSavedAs({ id: selectedId, name: catName });
   }
+  const chipStyle = (selected: boolean, anySelected: boolean, big: boolean) => ({
+    transition: "transform .28s cubic-bezier(0.34,1.4,0.64,1), opacity .25s ease, filter .25s ease, background .2s ease, font-size .25s ease",
+    transform: selected ? "scale(1.12)" : "scale(1)",
+    opacity: anySelected && !selected ? 0.35 : 1,
+    filter: anySelected && !selected ? "blur(1.2px)" : "none",
+    fontSize: selected ? (big ? 15 : 14) : (big ? 13 : 12),
+    zIndex: selected ? 1 : 0,
+    position: "relative" as const,
+  });
 
   return (
     <div style={{ position:"fixed", inset:0, zIndex:200, background:"rgba(0,0,0,0.55)",
@@ -5547,31 +5645,53 @@ function SharedClipIntakeOverlay({
 
         <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:10 }}>
           {parents.map(p => (
-            <button key={p.id} onClick={() => { setParentId(p.id); setSubId(""); }}
+            <button key={p.id} disabled={!!savedAs} onClick={() => { setParentId(p.id); setSubId(""); }}
               style={{
                 padding:"10px 14px", borderRadius:999, cursor:"pointer",
                 border: parentId === p.id ? "none" : "1px solid rgba(255,255,255,0.12)",
                 background: parentId === p.id ? C.accent : "rgba(255,255,255,0.08)",
                 color: parentId === p.id ? "#000" : "#fff",
-                fontSize:13, fontWeight:600,
+                fontWeight: parentId === p.id ? 700 : 600,
+                ...chipStyle(parentId === p.id, parentId !== "", true),
               }}>{p.name}</button>
           ))}
         </div>
         {subs.length > 0 && (
           <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:14 }}>
             {subs.map(s => (
-              <button key={s.id} onClick={() => setSubId(s.id)}
+              <button key={s.id} disabled={!!savedAs} onClick={() => setSubId(s.id)}
                 style={{
                   padding:"8px 12px", borderRadius:999, cursor:"pointer",
                   border: subId === s.id ? "none" : "1px solid rgba(255,255,255,0.12)",
                   background: subId === s.id ? "#fff" : "rgba(255,255,255,0.06)",
                   color: subId === s.id ? "#000" : "rgba(255,255,255,0.85)",
-                  fontSize:12, fontWeight:600,
+                  fontWeight: subId === s.id ? 700 : 600,
+                  ...chipStyle(subId === s.id, subId !== "", false),
                 }}>{s.name}</button>
             ))}
           </div>
         )}
         {err && <div style={{ color:"#ff9f43", fontSize:12, marginBottom:10 }}>{err}</div>}
+        {savedAs ? (
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            <div style={{ color:"#4cd964", fontSize:14, fontWeight:600, textAlign:"center" }}>
+              ✓ Saved to {savedAs.name}
+            </div>
+            <button onClick={() => onShowInPlaybook
+                ? onShowInPlaybook(play.id, savedAs.id, savedAs.name)
+                : onSaved(play.id, savedAs.id, savedAs.name)}
+              style={{ width:"100%", padding:"15px", borderRadius:999, border:"none",
+                background:C.accent, color:"#000", fontSize:16, fontWeight:700, cursor:"pointer" }}>
+              Show in Playbook
+            </button>
+            <button onClick={() => onSaved(play.id, savedAs.id, savedAs.name)}
+              style={{ width:"100%", padding:"13px", borderRadius:999,
+                border:"1px solid rgba(255,255,255,0.14)", background:"rgba(255,255,255,0.06)",
+                color:"#fff", fontSize:15, fontWeight:600, cursor:"pointer" }}>
+              Done
+            </button>
+          </div>
+        ) : (
         <button onClick={save} disabled={!canSave || saving}
           style={{
             width:"100%", padding:"15px", borderRadius:999, border:"none",
@@ -5581,6 +5701,7 @@ function SharedClipIntakeOverlay({
           }}>
           {saving ? "Saving…" : "Save to Playbook"}
         </button>
+        )}
       </div>
     </div>
   );
@@ -6049,7 +6170,12 @@ export default function App() {
       if (cancelled || !rows.length) return;
       const nameById = new Map(cats.map(c => [c.id, c.name]));
       const localIdByName = new Map(CATEGORIES.map(c => [c.name.toLowerCase(), c.id]));
-      setUserPlays(prev => {
+      setUserPlays(prevRaw => {
+        // Backfill server thumbnails onto clips already in the local library.
+        const thumbByUrl = new Map(rows.filter(r => r.source_url && r.thumbnail_url)
+          .map(r => [r.source_url, r.thumbnail_url as string]));
+        const prev = prevRaw.map(p => (!(p as FeedPlay).thumbnailUrl && thumbByUrl.has(p.sourceUrl))
+          ? ({ ...p, thumbnailUrl: thumbByUrl.get(p.sourceUrl) } as unknown as UserPlayItem) : p);
         const byUrl = new Set(prev.map(p => p.sourceUrl));
         const extras: UserPlayItem[] = [];
         for (const row of rows) {
@@ -6074,6 +6200,7 @@ export default function App() {
             views: 0,
             addedAt: new Date(row.created_at),
             gradient: ["#1a2440", "#0d0d0f"],
+            ...(row.thumbnail_url ? { thumbnailUrl: row.thumbnail_url } : {}),
           } as UserPlayItem);
         }
         return extras.length ? [...extras, ...prev] : prev;
@@ -6450,7 +6577,7 @@ export default function App() {
                     : screen.id === "playbook"
                     ? <PlaybookScreen navigate={navigate} />
                     : screen.id === "category"
-                    ? <CategoryScreen catId={(screen as any).catId} navigate={navigate} from={screen} />
+                    ? <CategoryScreen catId={(screen as any).catId} highlightId={(screen as any).highlightId} navigate={navigate} from={{ id:"category", catId:(screen as any).catId }} />
                     : screen.id === "grid"
                     ? <GridScreen catId={(screen as any).catId} label={(screen as any).label} navigate={navigate} />
                     : screen.id === "clip"
@@ -6500,6 +6627,20 @@ export default function App() {
             setIntakeQueue(q => q.slice(1));
             recordSave();
             void loadFeed();
+          }}
+          onShowInPlaybook={(playId, categoryId, categoryName) => {
+            // Update the module mirror now so the category screen sees the clip.
+            USER_PLAYS = USER_PLAYS.map(p => p.id === playId
+              ? { ...p, categoryId, savedAt: categoryName, title: `${categoryName} clip` } : p);
+            setUserPlays(prev => prev.map(p =>
+              p.id === playId
+                ? { ...p, categoryId, savedAt: categoryName, title: `${categoryName} clip` }
+                : p
+            ));
+            setIntakeQueue(q => q.slice(1));
+            recordSave();
+            void loadFeed();
+            navigate({ id:"category", catId: categoryId, highlightId: playId });
           }}
         />
       )}

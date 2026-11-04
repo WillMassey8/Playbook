@@ -23,3 +23,7 @@ button, input, select, textarea {
 input::placeholder { color: rgba(255,255,255,0.25); }
 .hide-scrollbar::-webkit-scrollbar { display: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Just-saved clip highlight after "Show in Playbook" */
+.pb-just-saved { outline: 3px solid #4cd964; outline-offset: -3px; animation: pbJustSaved 1.2s ease-in-out 3; }
+@keyframes pbJustSaved { 0%,100% { box-shadow: 0 0 0 0 rgba(76,217,100,0.0); } 50% { box-shadow: 0 0 18px 4px rgba(76,217,100,0.75); } }
