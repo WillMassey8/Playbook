@@ -2,9 +2,9 @@ import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
 /**
- * Dev-only passthrough so the browser can muted-autoplay X CDN clips.
- * iOS AVPlayer talks to video.twimg.com directly; browsers need this relay.
- * Bytes are not written to disk.
+ * Same-origin relay for video.twimg.com. The CDN returns 403 when the
+ * Referer is this app, which paints a black <video> in WKWebView.
+ * Bytes are not written to disk. Production uses preview/api/tw-video.js.
  */
 function twitterVideoProxy(): Plugin {
   return {

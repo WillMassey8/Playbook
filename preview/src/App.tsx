@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useContext, createContext, useMemo } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useContext, createContext, useMemo } from "react";
 import IPhoneSimulator from "./IPhoneSimulator";
 import { supabase } from "./lib/supabase";
 import { ingestPlayToAccount, fetchRemotePlays, fetchRemoteCategories, fetchGlobalFeed } from "./lib/plays";
@@ -210,7 +210,11 @@ function loadAffinity(): AffinityState {
   try {
     const raw = localStorage.getItem(AFFINITY_KEY);
     if (!raw) return { plays: {} };
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || !parsed.plays || typeof parsed.plays !== "object") {
+      return { plays: {} };
+    }
+    return parsed;
   } catch {
     return { plays: {} };
   }
@@ -247,10 +251,11 @@ function affinityForPlay(s: PlaySignals | undefined): number {
 
 // Aggregate affinity for a category = sum of affinities of plays in it
 function affinityForCategory(catId: string, affinity: AffinityState): number {
+  const signals = affinity?.plays && typeof affinity.plays === "object" ? affinity.plays : {};
   const catIds = descendantIds(catId);
   return allPlays()
     .filter(p => catIds.has(p.categoryId))
-    .reduce((acc, p) => acc + affinityForPlay(affinity.plays[p.id]), 0);
+    .reduce((acc, p) => acc + affinityForPlay(signals[p.id]), 0);
 }
 
 type SignalKind = "open" | "replay" | "like" | "share";
@@ -588,14 +593,35 @@ function pickMp4Variant(variants: Array<Record<string, unknown>>): string | null
     .map(v => ({ url: v.url as string, bitrate: (v.bitrate as number) ?? 0 }))
     .sort((a, b) => b.bitrate - a.bitrate);
   if (mp4s.length === 0) return null;
+  // Mid-tier mobile file: starts quickly and stays under a few MB when relayed.
+  const mobile = mp4s.find(v => v.bitrate >= 400_000 && v.bitrate <= 1_200_000);
+  if (mobile) return mobile.url;
   const compatible = mp4s.find(v => v.bitrate > 0 && v.bitrate <= 2_500_000);
-  return (compatible ?? mp4s[0]).url;
+  return (compatible ?? mp4s[mp4s.length - 1]).url;
+}
+
+/** Same-origin relay. Nothing is stored — the edge function streams the temporary CDN URL. */
+function proxiedVideoUrl(url: string): string {
+  // Vite dev middleware serves /tw-video. Production is the Vercel edge function.
+  const path = import.meta.env.DEV ? "/tw-video" : "/api/tw-video";
+  return `${path}?url=${encodeURIComponent(url)}`;
 }
 
 function throughVideoProxy(url: string): string {
-  // Dev server relays video.twimg.com. In production (WKWebView/AVPlayer and
-  // browsers) the temporary CDN URL plays directly in <video>; nothing is stored.
-  return import.meta.env.DEV ? `/tw-video?url=${encodeURIComponent(url)}` : url;
+  // video.twimg.com answers 403 when the Referer is this app, so a direct
+  // <video src> paints black in WKWebView and never fires a useful fallback.
+  // Relay it (dev middleware or production /tw-video) with an x.com Referer.
+  if (!/^https:\/\/video\.twimg\.com\//.test(url)) return url;
+  return proxiedVideoUrl(url);
+}
+
+function directTwimgFromProxy(src: string): string | null {
+  if (!src.startsWith("/tw-video") && !src.startsWith("/api/tw-video")) return null;
+  try {
+    const raw = new URL(src, "https://playbook.local").searchParams.get("url");
+    if (raw && /^https:\/\/video\.twimg\.com\//.test(raw)) return raw;
+  } catch { /* ignore malformed proxy src */ }
+  return null;
 }
 
 const streamCache = new Map<string, string | null>();
@@ -784,22 +810,36 @@ function OfficialEmbedPlayer({
   onUnavailable?: () => void;
 }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const unavailableRef = useRef(onUnavailable);
+  unavailableRef.current = onUnavailable;
   const isTikTok = /tiktok\.com\/player\//.test(embedUrl);
   // In the iOS app, an injected script autoplays IG/FB embeds and signals
   // "playing"; keep the frame invisible until then so no loading UI shows.
   const nativeAutoplay = !isTikTok && NativeBridge.available;
   const [embedPlaying, setEmbedPlaying] = useState(false);
+  const [embedReady, setEmbedReady] = useState(false);
+  useEffect(() => {
+    setEmbedPlaying(false);
+    setEmbedReady(false);
+  }, [embedUrl]);
   useEffect(() => {
     if (!nativeAutoplay) return;
     const onMsg = (e: MessageEvent) => {
       if (e.source !== frameRef.current?.contentWindow) return;
       const st = (e.data as { pbEmbed?: string })?.pbEmbed;
-      if (st === "playing") setEmbedPlaying(true);
-      if (st === "unavailable") onUnavailable?.();
+      if (st === "playing") { setEmbedPlaying(true); setEmbedReady(true); }
+      if (st === "unavailable") unavailableRef.current?.();
     };
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
-  }, [nativeAutoplay, onUnavailable]);
+  }, [nativeAutoplay, embedUrl]);
+  // A clip that never reports playback must not sit on screen as a black frame.
+  useEffect(() => {
+    if (!isActive || embedReady || embedPlaying) return;
+    const limit = isTikTok ? 8000 : 7000;
+    const t = window.setTimeout(() => unavailableRef.current?.(), limit);
+    return () => window.clearTimeout(t);
+  }, [isActive, embedReady, embedPlaying, embedUrl, isTikTok]);
   useEffect(() => {
     if (!isActive || !isTikTok) return;
     const send = (type: string, value?: number) =>
@@ -809,10 +849,11 @@ function OfficialEmbedPlayer({
       if (e.source !== frameRef.current?.contentWindow) return;
       const d = e.data as { type?: string; value?: unknown } | null;
       if (!d || typeof d !== "object") return;
-      if (d.type === "onPlayerReady") { send("mute"); send("play"); }
+      if (d.type === "onPlayerReady") { setEmbedReady(true); send("mute"); send("play"); }
+      if (d.type === "onStateChange" && d.value === 1) setEmbedPlaying(true);
       // loop=1 should handle this; restart defensively if the player stops.
       if (d.type === "onStateChange" && (d.value === 0 || d.value === 2)) { send("seekTo", 0); send("play"); }
-      if (d.type === "onPlayerError") onUnavailable?.();
+      if (d.type === "onPlayerError") unavailableRef.current?.();
     };
     window.addEventListener("message", onMsg);
     // Also nudge mute+play for the first seconds in case the ready event is missed
@@ -820,7 +861,7 @@ function OfficialEmbedPlayer({
     let n = 0;
     const iv = window.setInterval(() => { send("mute"); send("play"); if (++n > 8) window.clearInterval(iv); }, 1200);
     return () => { window.removeEventListener("message", onMsg); window.clearInterval(iv); };
-  }, [isActive, isTikTok, onUnavailable]);
+  }, [isActive, isTikTok, embedUrl]);
   // TikTok is not preloaded: two live TikTok players trigger its "Watch on TikTok" gate.
   if (!isActive && !(warm && nativeAutoplay)) return null;
   return (
@@ -838,7 +879,7 @@ function OfficialEmbedPlayer({
         width: "100%",
         height: "100%",
         border: "none",
-        background: "#000",
+        background: "transparent",
         zIndex: 1,
         opacity: nativeAutoplay && !embedPlaying ? 0 : 1,
         transition: "opacity .15s",
@@ -850,12 +891,40 @@ function OfficialEmbedPlayer({
   );
 }
 
-/** Coach-owned uploads only — never third-party social downloads. */
-function NativeClipVideo({ src, isActive, paused, videoRef, warm = false }: {
+/** Coach-owned uploads and temporary X streams — never stored social files. */
+function NativeClipVideo({ src, isActive, paused, videoRef, warm = false, onFailed, onPlaying, failAfterMs = 10000 }: {
   src: string; isActive: boolean; paused: boolean;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   warm?: boolean;
+  onFailed?: () => void;
+  onPlaying?: () => void;
+  failAfterMs?: number;
 }) {
+  const failedRef = useRef(onFailed);
+  const playingRef = useRef(onPlaying);
+  failedRef.current = onFailed;
+  playingRef.current = onPlaying;
+  const [visible, setVisible] = useState(false);
+  const reported = useRef(false);
+  const played = useRef(false);
+
+  useEffect(() => {
+    setVisible(false);
+    reported.current = false;
+    played.current = false;
+  }, [src]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const t = window.setTimeout(() => {
+      if (!played.current && !reported.current) {
+        reported.current = true;
+        failedRef.current?.();
+      }
+    }, failAfterMs);
+    return () => window.clearTimeout(t);
+  }, [isActive, src, failAfterMs]);
+
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -863,22 +932,43 @@ function NativeClipVideo({ src, isActive, paused, videoRef, warm = false }: {
     v.muted = true; v.defaultMuted = true; v.loop = true; v.playsInline = true;
     v.setAttribute("muted", ""); v.setAttribute("playsinline", "");
     v.setAttribute("webkit-playsinline", "");
+    // Set before src. video.twimg.com 403s when the Referer is this app.
+    v.setAttribute("referrerpolicy", "no-referrer");
     const shouldPlay = isActive && !paused;
     const kick = () => { if (shouldPlay && v.paused) v.play().catch(() => {}); };
     const onEnded = () => { if (shouldPlay) { v.currentTime = 0; kick(); } };
     // iOS can pause inline video on its own (backgrounding, interruptions).
     const onPause = () => { if (shouldPlay) window.setTimeout(kick, 200); };
     const onVis = () => { if (document.visibilityState === "visible") kick(); };
-    if (shouldPlay) kick(); else v.pause();
+    const onErr = () => {
+      if (reported.current) return;
+      reported.current = true;
+      failedRef.current?.();
+    };
+    const onPlay = () => {
+      played.current = true;
+      setVisible(true);
+      playingRef.current?.();
+    };
     v.addEventListener("canplay", kick);
     v.addEventListener("loadeddata", kick);
+    v.addEventListener("playing", onPlay);
+    v.addEventListener("error", onErr);
     v.addEventListener("ended", onEnded);
     v.addEventListener("pause", onPause);
+    // Attach listeners before assigning src so a rejected CDN response is caught.
+    if (v.dataset.pbSrc !== src) {
+      v.dataset.pbSrc = src;
+      v.src = src;
+    }
+    if (shouldPlay) kick(); else v.pause();
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("pageshow", kick);
     return () => {
       v.removeEventListener("canplay", kick);
       v.removeEventListener("loadeddata", kick);
+      v.removeEventListener("playing", onPlay);
+      v.removeEventListener("error", onErr);
       v.removeEventListener("ended", onEnded);
       v.removeEventListener("pause", onPause);
       document.removeEventListener("visibilitychange", onVis);
@@ -891,7 +981,6 @@ function NativeClipVideo({ src, isActive, paused, videoRef, warm = false }: {
   return (
     <video
       ref={videoRef}
-      src={src}
       loop muted playsInline
       autoPlay={isActive}
       controls={false}
@@ -900,7 +989,8 @@ function NativeClipVideo({ src, isActive, paused, videoRef, warm = false }: {
       preload="auto"
       style={{
         position:"absolute", inset:0, width:"100%", height:"100%",
-        objectFit:"contain", objectPosition:"center", background:"#000",
+        objectFit:"contain", objectPosition:"center", background:"transparent",
+        opacity: visible ? 1 : 0,
       }}
     />
   );
@@ -1501,29 +1591,68 @@ function FeedCard({ play, isActive, warm = false }:
 
   const userVideo = (play as FeedPlay).videoStoragePath;
   const streamSrc = useTwitterAutoplay(play as FeedPlay, isActive, warm);
-  const autoplaySrc = userVideo || streamSrc;
+  const [playbackSrc, setPlaybackSrc] = useState<string | null>(null);
+  const [videoReady, setVideoReady] = useState(false);
+  const baseSrc = userVideo || streamSrc;
+  const autoplaySrc = playbackSrc || baseSrc;
   const embedUrl = !autoplaySrc ? officialEmbedUrl(play as FeedPlay) : null;
   const [embedFailed, setEmbedFailed] = useState(false);
-  const [streamTimedOut, setStreamTimedOut] = useState(false);
+  const [poster, setPoster] = useState<string | null>((play as FeedPlay).thumbnailUrl ?? null);
   const hasEmbed = Boolean(embedUrl) && !embedFailed;
+  const skipped = useRef(false);
 
   useEffect(() => {
-    setStreamTimedOut(false);
-    if (!isActive || autoplaySrc || play.platform !== "twitter") return;
-    const t = setTimeout(() => setStreamTimedOut(true), 7000);
-    return () => clearTimeout(t);
-  }, [isActive, autoplaySrc, play.platform]);
+    skipped.current = false;
+    setPlaybackSrc(null);
+    setVideoReady(false);
+    setEmbedFailed(false);
+    setPoster((play as FeedPlay).thumbnailUrl ?? null);
+  }, [play.id]);
 
-  const showOpenCard = isActive && !autoplaySrc && !hasEmbed
-    && (play.platform !== "twitter" || streamTimedOut || embedFailed);
-  const openSource = () => { if (play.sourceUrl) openExternal(play.sourceUrl); };
+  useEffect(() => {
+    if ((play as FeedPlay).thumbnailUrl || play.platform !== "twitter") return;
+    let live = true;
+    void resolveTwitterPoster(play.sourceUrl).then(u => { if (live && u) setPoster(u); });
+    return () => { live = false; };
+  }, [play.id, play.platform, play.sourceUrl]);
+
+  const skipClip = () => {
+    if (skipped.current) return;
+    skipped.current = true;
+    window.dispatchEvent(new CustomEvent("pb-feed-unavailable", { detail: play.id }));
+  };
+
+  const handleVideoFailed = () => {
+    const current = playbackSrc || baseSrc || "";
+    const raw = directTwimgFromProxy(current);
+    // Relay failed (or timed out). One direct attempt with no-referrer, then skip.
+    if (raw && playbackSrc !== raw) {
+      setVideoReady(false);
+      setPlaybackSrc(raw);
+      return;
+    }
+    skipClip();
+  };
+
+  useEffect(() => {
+    if (!isActive || autoplaySrc || hasEmbed) return;
+    const t = window.setTimeout(skipClip, 7000);
+    return () => window.clearTimeout(t);
+    // skipClip is stable for this card; play.id resets the skipped flag.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, autoplaySrc, hasEmbed, play.id]);
+
+  // Spinner only while a real <video> is unresolved, or while an IG/FB embed
+  // is held invisible in the iOS app. TikTok's player is visible on its own.
+  const coverEmbed = hasEmbed && NativeBridge.available && play.platform !== "tiktok";
+  const showWait = isActive && !videoReady && (!hasEmbed || coverEmbed);
 
   return (
     <div style={{ width:"100%", height:"100%", position:"relative",
-      overflow:"hidden" }}
-      onClick={autoplaySrc ? handleTap : (showOpenCard ? openSource : undefined)}>
+      overflow:"hidden", background:"#0d0d0f" }}
+      onClick={autoplaySrc ? handleTap : undefined}>
 
-      <PlayMediaBackdrop play={play as FeedPlay} />
+      <PlayMediaBackdrop play={{ ...(play as FeedPlay), thumbnailUrl: poster || (play as FeedPlay).thumbnailUrl }} />
 
       {/* Muted looping autoplay — X stream or coach-owned upload */}
       {autoplaySrc && (
@@ -1533,55 +1662,31 @@ function FeedCard({ play, isActive, warm = false }:
           paused={paused}
           videoRef={videoRef}
           warm={warm}
+          onPlaying={() => setVideoReady(true)}
+          onFailed={handleVideoFailed}
         />
       )}
 
-      {/* TikTok / IG / FB (and X fallback) — official embed, autoplay allowed */}
-      {!autoplaySrc && embedUrl && !embedFailed && (play.platform !== "twitter" || streamTimedOut) && (
+      {/* TikTok / IG / FB — official embed. Dead embeds are removed, not left black. */}
+      {!autoplaySrc && embedUrl && !embedFailed && (
         <OfficialEmbedPlayer
           embedUrl={embedUrl}
           isActive={isActive}
           warm={warm}
           onUnavailable={() => {
             setEmbedFailed(true);
-            // Facebook posts that can't embed stay in the feed as a
-            // "Watch on Facebook" card instead of silently disappearing.
-            if (play.platform === "instagram")
-              window.dispatchEvent(new CustomEvent("pb-feed-unavailable", { detail: play.id }));
+            skipClip();
           }}
         />
       )}
 
-      {/* Resolving X stream */}
-      {isActive && play.platform === "twitter" && !autoplaySrc && !streamTimedOut && (
+      {showWait && (
         <div style={{ position:"absolute", inset:0, display:"flex",
           alignItems:"center", justifyContent:"center", pointerEvents:"none", zIndex: 2 }}>
           <div style={{ width:28, height:28, borderRadius:"50%",
             border:"2px solid rgba(255,255,255,0.15)",
             borderTopColor:"rgba(255,255,255,0.85)",
             animation:"spin 0.7s linear infinite" }} />
-        </div>
-      )}
-
-      {/* Unavailable only after stream/embed fail */}
-      {showOpenCard && (
-        <div style={{ position:"absolute", inset:0, display:"flex",
-          flexDirection:"column", gap:14,
-          alignItems:"center", justifyContent:"center",
-          opacity: isActive ? 1 : 0.3,
-          transform: isActive ? "scale(1)" : "scale(0.9)",
-          transition:"all .4s cubic-bezier(0.34,1.1,0.64,1)",
-          zIndex: 2 }}>
-          <div style={{ fontSize:13, fontWeight:600, color:"rgba(255,255,255,0.9)",
-            letterSpacing:"-0.01em", textAlign:"center", padding:"0 24px" }}>
-            {play.platform === "facebook"
-              ? "This Facebook post can't play inside PlaySave."
-              : "This clip is private, deleted, or unavailable in-app."}
-          </div>
-          <div style={{ fontSize:12, fontWeight:600, color: play.platform === "facebook" ? "#fff" : C.accent,
-            ...(play.platform === "facebook" ? { background:"#1877F2", borderRadius:999, padding:"9px 18px" } : {}) }}>
-            {play.platform === "facebook" ? "Watch on Facebook" : platformOpenLabel(play.platform)}
-          </div>
         </div>
       )}
 
@@ -1756,6 +1861,8 @@ function FeedScreen() {
   const scrollRef  = useRef<HTMLDivElement>(null);
   const touchStart = useRef<number>(0);
   const pulling    = useRef(false);
+  const pullRef    = useRef(0);
+  const hiddenIds  = useRef(new Set<string>());
 
   const { rerankFeed } = useAffinity();
   const { plays: libraryPlays, feed } = usePlays();
@@ -1764,9 +1871,15 @@ function FeedScreen() {
   // Personalized order, but always surface freshly-imported clips first so a
   // just-added link is immediately visible at the top of the feed.
   const buildOrder = () => {
-    const ranked = rerankFeed(plays as unknown as FeedPlay[]);
-    const mine = ranked.filter(p => p.id.startsWith("user-"));
-    const rest = ranked.filter(p => !p.id.startsWith("user-"));
+    let ranked: FeedPlay[] = [];
+    try {
+      ranked = rerankFeed(plays as unknown as FeedPlay[]);
+    } catch {
+      ranked = (plays ?? []) as unknown as FeedPlay[];
+    }
+    const visible = ranked.filter(p => p?.id && !hiddenIds.current.has(p.id));
+    const mine = visible.filter(p => p.id.startsWith("user-"));
+    const rest = visible.filter(p => !p.id.startsWith("user-"));
     return [...mine, ...rest];
   };
   const [feedOrder, setFeedOrder] = useState<FeedPlay[]>(buildOrder);
@@ -1774,16 +1887,27 @@ function FeedScreen() {
     setFeedOrder(buildOrder());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plays]);
-  // Drop upcoming cards whose IG/FB embed can't play in-app (owner disabled
-  // embedding, photo post, deleted) so swipes never land on a dead card.
+  // Drop the card on screen (and anything not yet reached) when playback
+  // fails, so a black or dead embed never stays in the reel.
   const activeIdxRef = useRef(0);
   useEffect(() => { activeIdxRef.current = activeIdx; }, [activeIdx]);
+  // Keep a fresh session on the first clip. Overflow anchoring otherwise
+  // holds the placeholder card when the signed-in library is prepended.
+  const firstId = feedOrder[0]?.id;
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || activeIdxRef.current !== 0) return;
+    el.scrollTop = 0;
+  }, [firstId]);
   useEffect(() => {
     const onDead = (e: Event) => {
       const id = (e as CustomEvent<string>).detail;
+      if (!id) return;
+      hiddenIds.current.add(id);
       setFeedOrder(order => {
         const i = order.findIndex(p => p.id === id);
-        return i > activeIdxRef.current ? order.filter(p => p.id !== id) : order;
+        if (i < 0 || i < activeIdxRef.current) return order;
+        return order.filter(p => p.id !== id);
       });
     };
     window.addEventListener("pb-feed-unavailable", onDead);
@@ -1792,17 +1916,34 @@ function FeedScreen() {
 
   const THRESHOLD = 64; // px to trigger refresh
 
+  const beginRefresh = () => {
+    setPullY(0);
+    pullRef.current = 0;
+    setRefreshing(true);
+    window.dispatchEvent(new Event("pb-feed-refresh"));
+    try { setFeedOrder(buildOrder()); } catch { /* ranking must not trap the spinner */ }
+  };
+
+  // The header spinner always ends, even if the gesture handler throws
+  // or a refetch never settles.
+  useEffect(() => {
+    if (!refreshing) return;
+    const t = window.setTimeout(() => setRefreshing(false), 1600);
+    return () => window.clearTimeout(t);
+  }, [refreshing]);
+
   // ── Scroll tracking for active card ──────────────────────────────────────
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const onScroll = () => {
+      if (!el.clientHeight) return;
       const idx = Math.round(el.scrollTop / el.clientHeight);
-      setActiveIdx(idx);
+      setActiveIdx(Math.max(0, idx));
     };
     el.addEventListener("scroll", onScroll, { passive:true });
     return () => el.removeEventListener("scroll", onScroll);
-  }, []);
+  }, [feedOrder.length]);
 
   // ── Pull-to-refresh touch handlers ───────────────────────────────────────
   function onTouchStart(e: React.TouchEvent) {
@@ -1819,21 +1960,24 @@ function FeedScreen() {
     const dy = e.touches[0].clientY - touchStart.current;
     if (dy <= 0) return;
     // Rubber-band: slow down pull the further you go
-    setPullY(Math.min(dy / THRESHOLD, 1));
+    const amount = Math.min(dy / THRESHOLD, 1);
+    pullRef.current = amount;
+    setPullY(amount);
   }
 
   function onTouchEnd() {
     if (!pulling.current) return;
     pulling.current = false;
-    if (pullY >= 1) {
-      setRefreshing(true);
-      setPullY(0);
-      // Re-rank feed with fresh randomness on refresh
-      setFeedOrder(buildOrder());
-      setTimeout(() => setRefreshing(false), 1600);
-    } else {
-      setPullY(0);
-    }
+    const pulled = pullRef.current;
+    pullRef.current = 0;
+    if (pulled >= 1) beginRefresh();
+    else setPullY(0);
+  }
+
+  function onTouchCancel() {
+    pulling.current = false;
+    pullRef.current = 0;
+    setPullY(0);
   }
 
   // Pull indicator: translate + opacity
@@ -1841,7 +1985,9 @@ function FeedScreen() {
   const spinDeg    = pullY * 270;
 
   return (
-    <div style={{ position:"relative", width:"100%", height:"100%", overflow:"hidden" }}>
+    <div style={{ position:"relative", width:"100%", height:"100%", overflow:"hidden",
+      background:"#000", display:"flex", justifyContent:"center" }}>
+    <div style={{ position:"relative", width:"100%", maxWidth:720, height:"100%", overflow:"hidden" }}>
 
       {/* Pull-to-refresh indicator */}
       <div style={{
@@ -1881,11 +2027,8 @@ function FeedScreen() {
         display:"flex", justifyContent:"center", alignItems:"center",
         paddingTop:"calc(12px + var(--pb-safe-top, env(safe-area-inset-top)))", paddingBottom:8,
         background:"linear-gradient(rgba(0,0,0,0.5), transparent)" }}>
-        {/* Debug tap-to-refresh (mousedown triggers refresh for desktop preview) */}
-        <span
-          onMouseDown={() => { setRefreshing(true); setFeedOrder(buildOrder()); setTimeout(() => setRefreshing(false), 1600); }}
-          style={{ fontSize:15, fontWeight:600, color:"rgba(255,255,255,0.9)",
-            letterSpacing:"-0.01em", cursor:"default", userSelect:"none" }}>
+        <span style={{ fontSize:15, fontWeight:600, color:"rgba(255,255,255,0.9)",
+            letterSpacing:"-0.01em", userSelect:"none" }}>
           {refreshing ? "Refreshing…" : "For You"}
         </span>
       </div>
@@ -1899,7 +2042,8 @@ function FeedScreen() {
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
-        style={{ height:"100%", overflowY:"scroll",
+        onTouchCancel={onTouchCancel}
+        style={{ height:"100%", overflowY:"scroll", overflowAnchor:"none",
           scrollSnapType:"y mandatory", WebkitOverflowScrolling:"touch" as any,
           scrollbarWidth:"none", msOverflowStyle:"none" as any,
           transform: pullY > 0 && !refreshing
@@ -1907,7 +2051,19 @@ function FeedScreen() {
           transition: pulling.current ? "none" : "transform .3s cubic-bezier(.25,.46,.45,.94)",
         }}
         className="hide-scrollbar">
-        {feedOrder.map((play, i) => (
+        {feedOrder.length === 0 ? (
+          <div style={{ height:"100%", display:"flex", flexDirection:"column",
+            alignItems:"center", justifyContent:"center", textAlign:"center",
+            padding:"32px 28px 120px", gap:12 }}>
+            <div style={{ fontSize:22, fontWeight:600, color:"rgba(255,255,255,0.95)",
+              letterSpacing:"-0.02em" }}>No plays in the feed yet</div>
+            <div style={{ fontSize:15, lineHeight:1.45, color:"rgba(255,255,255,0.68)",
+              maxWidth:340 }}>
+              Save a football clip from X, TikTok, Instagram, or Facebook.
+              Share it to PlaySave, pick a category, and it shows up here to install with your team.
+            </div>
+          </div>
+        ) : feedOrder.map((play, i) => (
           <div key={play.id} style={{ height:"100%", scrollSnapAlign:"start",
             scrollSnapStop:"always", flexShrink:0 }}>
             <FeedCard play={play} isActive={activeIdx === i}
@@ -1915,6 +2071,7 @@ function FeedScreen() {
           </div>
         ))}
       </div>
+    </div>
     </div>
   );
 }
@@ -2590,10 +2747,22 @@ function ClipPage({ play, isActive, warm = false, paused, onTogglePause }: {
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [embedFailed, setEmbedFailed] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
+  const [playbackSrc, setPlaybackSrc] = useState<string | null>(null);
   const streamSrc = useTwitterAutoplay(play, isActive, warm);
-  const autoplaySrc = play.videoStoragePath || streamSrc;
+  const baseSrc = play.videoStoragePath || streamSrc;
+  const autoplaySrc = !videoFailed ? (playbackSrc || baseSrc) : null;
   const embedUrl = !autoplaySrc ? officialEmbedUrl(play) : null;
   const hasEmbed = Boolean(embedUrl) && !embedFailed;
+  const handleVideoFailed = () => {
+    const current = playbackSrc || baseSrc || "";
+    const raw = directTwimgFromProxy(current);
+    if (raw && playbackSrc !== raw) {
+      setPlaybackSrc(raw);
+      return;
+    }
+    setVideoFailed(true);
+  };
 
   const cat    = CATEGORIES.find(c => c.id === play.categoryId);
   const parent = cat?.parentId ? CATEGORIES.find(c => c.id === cat.parentId) : null;
@@ -2606,7 +2775,8 @@ function ClipPage({ play, isActive, warm = false, paused, onTogglePause }: {
       <PlayMediaBackdrop play={play} />
       {autoplaySrc && (
         <NativeClipVideo src={autoplaySrc} isActive={isActive}
-          paused={paused} videoRef={videoRef} warm={warm} />
+          paused={paused} videoRef={videoRef} warm={warm}
+          onFailed={handleVideoFailed} />
       )}
       {!autoplaySrc && embedUrl && !embedFailed && (
         <OfficialEmbedPlayer
@@ -6066,7 +6236,8 @@ function TabBar({ active, onTab }: { active:string; onTab:(t:string)=>void }) {
   ];
   return (
     // Outer wrapper — full width, positions the floating pill
-    <div style={{ position:"absolute", bottom:18, left:0, right:0,
+    <div style={{ position:"absolute", left:0, right:0,
+      bottom:"max(18px, env(safe-area-inset-bottom, 0px))",
       display:"flex", justifyContent:"center", pointerEvents:"none", zIndex:20 }}>
 
       {/* The pill itself */}
@@ -6264,6 +6435,9 @@ export default function App() {
   useEffect(() => {
     if (!authed || skipAuth) return;
     void loadFeed();
+    const onRefresh = () => { void loadFeed(); };
+    window.addEventListener("pb-feed-refresh", onRefresh);
+    return () => window.removeEventListener("pb-feed-refresh", onRefresh);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed, skipAuth]);
   const addPlay = (p: UserPlayItem) => {
@@ -6404,12 +6578,13 @@ export default function App() {
   const rerankFeed = <T extends { id: string; categoryId: string }>(plays: T[]): T[] => {
     if (plays.length === 0) return plays;
     // Cold-start: no signals yet → return original order
-    const hasAnyData = Object.keys(affinity.plays).length > 0;
+    const signalMap = affinity?.plays && typeof affinity.plays === "object" ? affinity.plays : {};
+    const hasAnyData = Object.keys(signalMap).length > 0;
     if (!hasAnyData) return plays;
 
     // Score each play: affinity of the play itself + affinity of its category (weight 0.3)
     const scored = plays.map(p => {
-      const playScore = affinityForPlay(affinity.plays[p.id]);
+      const playScore = affinityForPlay(signalMap[p.id]);
       const catScore = affinityForCategory(p.categoryId, affinity) * 0.3;
       return { play: p, score: playScore + catScore };
     });

@@ -218,10 +218,10 @@ export default function IPhoneSimulator({
     return () => window.removeEventListener("resize", update);
   }, [device]);
 
-  // Real device / narrow viewport (e.g. the actual iOS app in a WKWebView):
-  // render the app full-screen. iOS provides true safe-area insets via env(),
-  // so the desktop device template isn't needed here.
-  if (isCompact) return <>{children}</>;
+  // The device chrome is a desktop preview tool. The shipped app (and any
+  // phone or iPad WebView) renders full-screen. iPad Air is wider than 700px,
+  // so a width check alone would show the simulator to App Review.
+  if (!import.meta.env.DEV || isCompact) return <>{children}</>;
 
   const outerW = device.width + BEZEL * 2;
   const outerH = device.height + BEZEL * 2;
