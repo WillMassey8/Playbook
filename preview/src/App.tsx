@@ -604,7 +604,7 @@ function pickMp4Variant(variants: Array<Record<string, unknown>>): string | null
 function proxiedVideoUrl(url: string): string {
   // Vite dev middleware serves /tw-video. Production is the Vercel edge function.
   const path = import.meta.env.DEV ? "/tw-video" : "/api/tw-video";
-  return `${path}?url=${encodeURIComponent(url)}`;
+  return `${path}?v=2&url=${encodeURIComponent(url)}`;
 }
 
 function throughVideoProxy(url: string): string {

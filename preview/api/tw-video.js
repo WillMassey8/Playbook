@@ -35,7 +35,12 @@ async function relay(request) {
   let upstream;
   try { upstream = await fetch(parsed.toString(), { headers }); }
   catch { return { status: 502, body: "upstream failed", headers: { "content-type": "text/plain" } }; }
-  const out = { "Cache-Control": "public, max-age=300" };
+  // Never cache. A cached Range response was served back as the whole file
+  // and the <video> element failed closed.
+  const out = {
+    "Cache-Control": "private, no-store",
+    "CDN-Cache-Control": "no-store",
+  };
   for (const name of ["content-type", "content-length", "content-range", "accept-ranges"]) {
     const value = upstream.headers.get(name);
     if (value) out[name] = value;
